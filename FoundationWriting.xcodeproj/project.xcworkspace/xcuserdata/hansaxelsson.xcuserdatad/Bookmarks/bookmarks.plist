@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>top-level-items</key>
+	<array>
+		<dict>
+			<key>destination</key>
+			<dict>
+				<key>location-parameters</key>
+				<dict>
+					<key>XcodeLocation</key>
+					<string>{"ExpandTranscript":true,"IndexPath":[0,0]}</string>
+				</dict>
+				<key>rebasable-url</key>
+				<dict>
+					<key>payload</key>
+					<string>x-xcode-log://90B2740F-8AC0-4A6F-BB2B-D444A81A0AB5</string>
+				</dict>
+				<key>scheme</key>
+				<string>x-xcode-log</string>
+				<key>type</key>
+				<string>IDELogDocumentLocation</string>
+			</dict>
+			<key>title</key>
+			<string>Error: Cycle in dependencies between targets 'FoundationWriting' and 'FoundationWritingTests'; building could produce unreliable results.
+Cycle path: FoundationWriting → FoundationWritingTests → FoundationWriting
+Cycle details:
+→ Target 'FoundationWriting' has an implicit dependency on Target 'FoundationWritingTests' because 'FoundationWriting' references the file 'FoundationWritingTests.xctest' in the build phase 'Copy Files'
+○ Target 'FoundationWritingTests' has link command with output '/Users/hansaxelsson/Library/Developer/Xcode/DerivedData/FoundationWriting-beqcahdvhjgvclgrnruozfadedzu/Build/Products/Debug/FoundationWriting.app/Contents/PlugIns/FoundationWritingTests.xctest/Contents/MacOS/FoundationWritingTests'
+→ Target 'FoundationWriting' has link command with output '/Users/hansaxelsson/Library/Developer/Xcode/DerivedData/FoundationWriting-beqcahdvhjgvclgrnruozfadedzu/Build/Products/Debug/FoundationWriting.app/Contents/MacOS/FoundationWriting.debug.dylib'
+
+
+Raw dependency cycle trace:
+
+target:  -&gt;
+
+node: &lt;all&gt; -&gt;
+
+command: &lt;all&gt; -&gt;
+
+node: /Users/hansaxelsson/Library/Developer/Xcode/DerivedData/FoundationWriting-beqcahdvhjgvclgrnruozfadedzu/Build/Intermediates.noindex/FoundationWriting.build/Debug/FoundationWriting.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata -&gt;
+
+command: P0:target-FoundationWriting-598b3ea4a85a8a3d470898543f22ff0d6fd196a3b27bffbdecd8ee3a8866ecde-:Debug:ExtractAppIntentsMetadata -&gt;
+
+node: /Users/hansaxelsson/Library/Developer/Xcode/DerivedData/FoundationWriting-beqcahdvhjgvclgrnruozfadedzu/Build/Intermediates.noindex/FoundationWriting.build/Debug/FoundationWriting.build/Objects-normal/arm64/FoundationWriting_dependency_info.dat -&gt;
+
+CYCLE POINT -&gt;
+
+command: P2:target-FoundationWriting-598b3ea4a85a8a3d470898543f22ff0d6fd196a3b27bffbdecd8ee3a8866ecde-:Debug:Ld /Users/hansaxelsson/Library/Developer/Xcode/DerivedData/FoundationWriting-beqcahdvhjgvclgrnruozfadedzu/Build/Products/Debug/FoundationWriting.app/Contents/MacOS/FoundationWriting.debug.dylib normal -&gt;
+
+node: &lt;target-FoundationWriting-598b3ea4a85a8a3d470898543f22ff0d6fd196a3b27bffbdecd8ee3a8866ecde--begin-linking&gt; -&gt;
+
+command: P0:target-FoundationWriting-598b3ea4a85a8a3d470898543f22ff0d6fd196a3b27bffbdecd8ee3a8866ecde-:Debug:Gate target-FoundationWriting-598b3ea4a85a8a3d470898543f22ff0d6fd196a3b27bffbdecd8ee3a8866ecde--begin-linking -&gt;
+
+node: &lt;target-FoundationWritingTests-598b3ea4a85a8a3d470898543f22ff0d7a815e9b5ffab88d9b59ce6bbbec1563--end&gt; -&gt;
+
+command: P0:target-FoundationWritingTests-598b3ea4a85a8a3d470898543f22ff0d7a815e9b5ffab88d9b59ce6bbbec1563-:Debug:Gate target-FoundationWritingTests-598b3ea4a85a8a3d470898543f22ff0d7a815e9b5ffab88d9b59ce6bbbec1563--end -&gt;
+
+node: /Users/hansaxelsson/Library/Developer/Xcode/DerivedData/FoundationWriting-beqcahdvhjgvclgrnruozfadedzu/Build/Intermediates.noindex/FoundationWriting.build/Debug/FoundationWritingTests.build/Objects-normal/arm64/FoundationWritingTests_dependency_info.dat -&gt;
+
+command: P2:target-FoundationWritingTests-598b3ea4a85a8a3d470898543f22ff0d7a815e9b5ffab88d9b59ce6bbbec1563-:Debug:Ld /Users/hansaxelsson/Library/Developer/Xcode/DerivedData/FoundationWriting-beqcahdvhjgvclgrnruozfadedzu/Build/Products/Debug/FoundationWriting.app/Contents/PlugIns/FoundationWritingTests.xctest/Contents/MacOS/FoundationWritingTests normal -&gt;
+
+node: /Users/hansaxelsson/Library/Developer/Xcode/DerivedData/FoundationWriting-beqcahdvhjgvclgrnruozfadedzu/Build/Products/Debug/FoundationWriting.app/Contents/MacOS/FoundationWriting.debug.dylib -&gt;
+
+command: P2:target-FoundationWriting-598b3ea4a85a8a3d470898543f22ff0d6fd196a3b27bffbdecd8ee3a8866ecde-:Debug:Ld /Users/hansaxelsson/Library/Developer/Xcode/DerivedData/FoundationWriting-beqcahdvhjgvclgrnruozfadedzu/Build/Products/Debug/FoundationWriting.app/Contents/MacOS/FoundationWriting.debug.dylib normal</string>
+			<key>type</key>
+			<string>bookmark</string>
+		</dict>
+	</array>
+</dict>
+</plist>

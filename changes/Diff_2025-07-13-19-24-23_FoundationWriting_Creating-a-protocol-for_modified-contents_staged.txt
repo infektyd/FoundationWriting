@@ -1,0 +1,2078 @@
+diff --git a/FoundationWriting/FoundationModelsAnalysisService.swift b/FoundationWriting/FoundationModelsAnalysisService.swift
+new file mode 100644
+index 0000000..6662c93
+--- /dev/null
++++ b/FoundationWriting/FoundationModelsAnalysisService.swift
+@@ -0,0 +1,297 @@
++//  FoundationModelsAnalysisService.swift - Implementation using Foundation Models SDK
++//  Created on 2025-07-13
++
++import Foundation
++import FoundationModels
++
++/// Implementation of WritingAnalysisService using Apple's Foundation Models SDK
++class FoundationModelsAnalysisService: WritingAnalysisService {
++    
++    // MARK: - Properties
++    
++    /// Language model configuration for writing analysis
++    private let modelConfig: LanguageModel
++    
++    /// JSON decoder for parsing model responses
++    private let decoder = JSONDecoder()
++    
++    /// String extension for syllable counting
++    private let syllableCounter: (String) -> Int
++    
++    // MARK: - Initialization
++    
++    /// Initialize with default or custom model configuration
++    /// - Parameters:
++    ///   - namespace: Model namespace (default: .apple)
++    ///   - modelName: Model name (default: "foundation-writing")
++    ///   - variant: Model variant (default: .large)
++    ///   - syllableCounter: Custom syllable counting function
++    init(
++        namespace: LanguageModel.Namespace = .apple,
++        modelName: String = "foundation-writing",
++        variant: LanguageModel.Variant = .large,
++        syllableCounter: @escaping (String) -> Int = { text in
++            // Default syllable counter implementation
++            let vowels = CharacterSet(charactersIn: "aeiouyAEIOUY")
++            var count = 0
++            var previousWasVowel = false
++            
++            for scalar in text.unicodeScalars {
++                let isVowel = vowels.contains(scalar)
++                if isVowel && !previousWasVowel { count += 1 }
++                previousWasVowel = isVowel
++            }
++            
++            return max(count, 1)
++        }
++    ) {
++        self.modelConfig = LanguageModel(
++            namespace: namespace,
++            name: modelName,
++            variant: variant
++        )
++        self.syllableCounter = syllableCounter
++    }
++    
++    // MARK: - Private Helpers
++    
++    /// Calculate readability metrics for a text sample
++    private func calculateReadabilityMetrics(for text: String) -> WritingAnalysis.ReadabilityMetrics {
++        let sentences = max(text.split { ".!?".contains($0) }.count, 1)
++        let words = max(text.split { $0.isWhitespace || $0 == "\n" }.count, 1)
++        let wordList = text.split { $0.isWhitespace || $0 == "\n" }.map(String.init)
++        
++        // Calculate syllables
++        let syllables = wordList.map(syllableCounter).reduce(0, +)
++        
++        // Calculate Flesch-Kincaid grade level
++        let fk = 0.39 * Double(words) / Double(sentences) + 11.8 * Double(syllables) / Double(words) - 15.59
++        let fkGrade = fk.rounded(toPlaces: 1)
++        
++        // Determine grade level description
++        let fkLabel: String
++        switch fkGrade {
++        case ..<5:  fkLabel = "Elementary"
++        case ..<8:  fkLabel = "Intermediate"
++        case ..<12: fkLabel = "Advanced"
++        default:    fkLabel = "Scholarly"
++        }
++        
++        // Calculate average word length
++        let avgWordLength = wordList.map { $0.count }.reduce(0, +) / max(wordList.count, 1)
++        
++        // Estimate vocabulary diversity (unique words / total words)
++        let uniqueWords = Set(wordList.map { $0.lowercased() })
++        let vocabularyDiversity = Double(uniqueWords.count) / Double(max(words, 1))
++        
++        return WritingAnalysis.ReadabilityMetrics(
++            fleschKincaidGrade: fkGrade,
++            fleschKincaidLabel: fkLabel,
++            averageSentenceLength: Double(words) / Double(sentences),
++            averageWordLength: Double(avgWordLength),
++            vocabularyDiversity: vocabularyDiversity
++        )
++    }
++    
++    /// Create a session with the configured language model
++    private func createSession() async throws -> LanguageModelSession {
++        let sessionConfig = LanguageModelSession.Configuration(model: modelConfig)
++        return try LanguageModelSession(configuration: sessionConfig)
++    }
++    
++    // MARK: - WritingAnalysisService Protocol Implementation
++    
++    func analyzeWriting(_ text: String, options: WritingAnalysisOptions) async throws -> WritingAnalysis {
++        // Validate input
++        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
++            throw WritingAnalysisError.emptyText
++        }
++        
++        // Calculate readability metrics
++        let metrics = calculateReadabilityMetrics(for: text)
++        
++        // Create prompt for the model
++        let styleSpecification = options.targetStyle != nil ? "Target writing style: \(options.targetStyle!)" : ""
++        let prompt = """
++        Analyze this writing sample and respond ONLY with valid JSON (no ``` fences) matching this exact structure:
++        {
++          "assessment": "<detailed assessment text>",
++          "improvementSuggestions": [
++            { 
++              "title": "<skill area>", 
++              "summary": "<what to improve>", 
++              "beforeExample": "<example of current writing>", 
++              "afterExample": "<improved version>", 
++              "resources": [
++                {"authorName":"<author name>", "workTitle":"<book title>", "type":"book"}
++              ] 
++            }
++          ],
++          "methodology": "<explanation of analysis approach>"
++        }
++        
++        Writing sample to analyze:
++        \(text)
++        
++        \(styleSpecification)
++        
++        Provide concrete before/after examples and include 1-3 renowned writing authorities for each improvement area.
++        Your analysis should be \(options.strictness > 0.7 ? "very critical" : options.strictness > 0.4 ? "balanced" : "encouraging").
++        """
++        
++        do {
++            // Create language model session
++            let session = try await createSession()
++            
++            // Configure generation options
++            let generationOptions = LanguageModelSession.GenerationOptions(
++                temperature: options.temperature,
++                maximumResponseTokens: options.maxTokens
++            )
++            
++            // Get response from the model
++            let response = try await session.respond(to: prompt, options: generationOptions)
++            
++            // Parse the response
++            struct RawAnalysisResponse: Decodable {
++                let assessment: String
++                
++                struct RawSuggestion: Decodable {
++                    let title: String
++                    let summary: String
++                    let beforeExample: String
++                    let afterExample: String
++                    
++                    struct RawResource: Decodable {
++                        let authorName: String
++                        let workTitle: String
++                        let type: String
++                    }
++                    
++                    let resources: [RawResource]
++                }
++                
++                let improvementSuggestions: [RawSuggestion]
++                let methodology: String
++            }
++            
++            // Clean response text
++            let cleanedResponse = response.text
++                .replacingOccurrences(of: "(?m)^\\s*```(?:json)?\\s*$", with: "", options: .regularExpression)
++                .replacingOccurrences(of: "(?m)^\\s*```\\s*$", with: "", options: .regularExpression)
++                .trimmingCharacters(in: .whitespacesAndNewlines)
++            
++            // Parse JSON response
++            guard let responseData = cleanedResponse.data(using: .utf8) else {
++                throw WritingAnalysisError.responseParsingFailure("Could not convert response to data")
++            }
++            
++            let rawAnalysis = try decoder.decode(RawAnalysisResponse.self, from: responseData)
++            
++            // Convert raw suggestions to structured suggestions
++            let suggestions = rawAnalysis.improvementSuggestions.map { raw -> WritingAnalysis.ImprovementSuggestion in
++                let resources = raw.resources.map { res -> WritingAnalysis.ImprovementSuggestion.Resource in
++                    let resourceType = WritingAnalysis.ImprovementSuggestion.Resource.ResourceType(
++                        rawValue: res.type.lowercased()
++                    ) ?? .book
++                    
++                    return WritingAnalysis.ImprovementSuggestion.Resource(
++                        authorName: res.authorName,
++                        workTitle: res.workTitle,
++                        type: resourceType
++                    )
++                }
++                
++                return WritingAnalysis.ImprovementSuggestion(
++                    title: raw.title,
++                    summary: raw.summary,
++                    beforeExample: raw.beforeExample,
++                    afterExample: raw.afterExample,
++                    resources: resources
++                )
++            }
++            
++            // Create the complete analysis
++            return WritingAnalysis(
++                timestamp: Date(),
++                metrics: metrics,
++                assessment: rawAnalysis.assessment,
++                improvementSuggestions: suggestions,
++                methodology: rawAnalysis.methodology
++            )
++            
++        } catch let error as LanguageModelError {
++            switch error {
++            case .modelUnavailable:
++                throw WritingAnalysisError.modelLoadFailure("The specified language model is unavailable")
++            case .invalidRequest:
++                throw WritingAnalysisError.responseParsingFailure("Invalid request to language model")
++            case .tokenLimitExceeded:
++                throw WritingAnalysisError.tokenLimitExceeded
++            default:
++                throw WritingAnalysisError.unexpectedError(error)
++            }
++        } catch {
++            throw WritingAnalysisError.unexpectedError(error)
++        }
++    }
++    
++    func exploreItemReasoning(_ item: WritingAnalysis.ImprovementSuggestion, options: WritingAnalysisOptions) async throws -> String {
++        let prompt = """
++        Provide a detailed explanation of why the following writing improvement is beneficial:
++        
++        Improvement area: \(item.title)
++        Summary: \(item.summary)
++        
++        Before example: "\(item.beforeExample)"
++        After example: "\(item.afterExample)"
++        
++        Explain the reasoning behind this improvement in detail. Include:
++        1. The specific writing principles that apply
++        2. How this improvement affects reader comprehension
++        3. Common mistakes writers make in this area
++        4. Practical exercises to help develop this skill
++        
++        Your explanation should be educational, detailed, and helpful for a writer looking to improve.
++        """
++        
++        do {
++            // Create language model session
++            let session = try await createSession()
++            
++            // Configure generation options
++            let generationOptions = LanguageModelSession.GenerationOptions(
++                temperature: options.temperature,
++                maximumResponseTokens: options.maxTokens
++            )
++            
++            // Get response from the model
++            let response = try await session.respond(to: prompt, options: generationOptions)
++            
++            return response.text
++            
++        } catch let error as LanguageModelError {
++            switch error {
++            case .modelUnavailable:
++                throw WritingAnalysisError.modelLoadFailure("The specified language model is unavailable")
++            case .invalidRequest:
++                throw WritingAnalysisError.responseParsingFailure("Invalid request to language model")
++            case .tokenLimitExceeded:
++                throw WritingAnalysisError.tokenLimitExceeded
++            default:
++                throw WritingAnalysisError.unexpectedError(error)
++            }
++        } catch {
++            throw WritingAnalysisError.unexpectedError(error)
++        }
++    }
++}
++
++// MARK: - Helper Extensions
++
++fileprivate extension Double {
++    func rounded(toPlaces places: Int) -> Double {
++        let p = pow(10.0, Double(places))
++        return (self * p).rounded() / p
++    }
++}
+\ No newline at end of file
+diff --git a/FoundationWriting/FoundationWritingApp.swift b/FoundationWriting/FoundationWritingApp.swift
+deleted file mode 100644
+index 2e37d32..0000000
+--- a/FoundationWriting/FoundationWritingApp.swift
++++ /dev/null
+@@ -1,32 +0,0 @@
+-//
+-//  FoundationWritingApp.swift
+-//  FoundationWriting
+-//
+-//  Created by Hans Axelsson on 7/13/25.
+-//
+-
+-import SwiftUI
+-import SwiftData
+-
+-@main
+-struct FoundationWritingApp: App {
+-    var sharedModelContainer: ModelContainer = {
+-        let schema = Schema([
+-            Item.self,
+-        ])
+-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+-
+-        do {
+-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+-        } catch {
+-            fatalError("Could not create ModelContainer: \(error)")
+-        }
+-    }()
+-
+-    var body: some Scene {
+-        WindowGroup {
+-            ContentView()
+-        }
+-        .modelContainer(sharedModelContainer)
+-    }
+-}
+diff --git a/FoundationWriting/FoundationWritingapp.swift b/FoundationWriting/FoundationWritingapp.swift
+new file mode 100644
+index 0000000..f50c48c
+--- /dev/null
++++ b/FoundationWriting/FoundationWritingapp.swift
+@@ -0,0 +1,8 @@
++//
++//  FoundationWritingapp.swift
++//  FoundationWriting
++//
++//  Created by Hans Axelsson on 7/13/25.
++//
++
++import Foundation
+diff --git a/FoundationWriting/MockWritingAnalysisService.swift b/FoundationWriting/MockWritingAnalysisService.swift
+new file mode 100644
+index 0000000..6f261e3
+--- /dev/null
++++ b/FoundationWriting/MockWritingAnalysisService.swift
+@@ -0,0 +1,356 @@
++//  MockWritingAnalysisService.swift - Mock implementation for testing
++//  Created on 2025-07-13
++
++import Foundation
++
++/// Mock implementation of WritingAnalysisService for development and testing
++class MockWritingAnalysisService: WritingAnalysisService {
++    
++    // MARK: - Properties
++    
++    /// Simulated network delay in seconds
++    private let simulatedDelay: TimeInterval
++    
++    /// Random variation in delay time (0.0-1.0)
++    private let delayVariation: Double
++    
++    // MARK: - Initialization
++    
++    init(simulatedDelay: TimeInterval = 2.0, delayVariation: Double = 0.5) {
++        self.simulatedDelay = simulatedDelay
++        self.delayVariation = delayVariation
++    }
++    
++    // MARK: - Private Helper Methods
++    
++    /// Calculate realistic readability metrics for the provided text
++    private func calculateReadabilityMetrics(for text: String) -> WritingAnalysis.ReadabilityMetrics {
++        // Actual calculation for realistic metrics
++        let sentences = max(text.split { ".!?".contains($0) }.count, 1)
++        let words = max(text.split { $0.isWhitespace || $0 == "\n" }.count, 1)
++        
++        // Calculate syllables with a simple estimation
++        let syllables = text.split { $0.isWhitespace || $0 == "\n" }
++            .map { word -> Int in
++                let vowels = CharacterSet(charactersIn: "aeiouyAEIOUY")
++                var count = 0
++                var previousWasVowel = false
++                
++                for scalar in String(word).unicodeScalars {
++                    let isVowel = vowels.contains(scalar)
++                    if isVowel && !previousWasVowel { count += 1 }
++                    previousWasVowel = isVowel
++                }
++                
++                return max(count, 1)
++            }
++            .reduce(0, +)
++        
++        // Calculate Flesch-Kincaid grade level
++        let fk = 0.39 * Double(words) / Double(sentences) + 11.8 * Double(syllables) / Double(words) - 15.59
++        let fkGrade = (fk * 10).rounded() / 10
++        
++        // Determine grade level description
++        let fkLabel: String
++        switch fkGrade {
++        case ..<5:  fkLabel = "Elementary"
++        case ..<8:  fkLabel = "Intermediate"
++        case ..<12: fkLabel = "Advanced"
++        default:    fkLabel = "Scholarly"
++        }
++        
++        // For the mock, we'll simulate other metrics based on FK grade
++        let avgSentenceLength = Double(words) / Double(sentences)
++        let avgWordLength = Double(4.5 + (fkGrade * 0.1))
++        let vocabDiversity = min(0.8, max(0.3, 0.4 + (fkGrade * 0.02)))
++        
++        return WritingAnalysis.ReadabilityMetrics(
++            fleschKincaidGrade: fkGrade,
++            fleschKincaidLabel: fkLabel,
++            averageSentenceLength: avgSentenceLength,
++            averageWordLength: avgWordLength,
++            vocabularyDiversity: vocabDiversity
++        )
++    }
++    
++    /// Simulate network delay
++    private func simulateNetworkDelay() async throws {
++        let variationFactor = 1.0 + (Double.random(in: -delayVariation...delayVariation))
++        let delay = simulatedDelay * variationFactor
++        try await Task.sleep(for: .seconds(delay))
++    }
++    
++    // MARK: - WritingAnalysisService Protocol Implementation
++    
++    func analyzeWriting(_ text: String, options: WritingAnalysisOptions) async throws -> WritingAnalysis {
++        // Validate input
++        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
++            throw WritingAnalysisError.emptyText
++        }
++        
++        // Simulate network delay
++        try await simulateNetworkDelay()
++        
++        // Calculate realistic metrics
++        let metrics = calculateReadabilityMetrics(for: text)
++        
++        // Create mock assessment based on metrics
++        let assessment: String
++        if metrics.fleschKincaidGrade < 6 {
++            assessment = "Your writing demonstrates basic proficiency with simple sentence structures and common vocabulary. It's accessible to most readers but could benefit from more sophisticated language and varied sentence patterns."
++        } else if metrics.fleschKincaidGrade < 10 {
++            assessment = "Your writing demonstrates strong foundational skills with clear sentence structure and good vocabulary usage. The complexity level suggests intermediate proficiency with room for advancement in sentence variety and sophisticated transitions."
++        } else {
++            assessment = "Your writing demonstrates advanced proficiency with complex sentence structures and sophisticated vocabulary. You effectively convey nuanced ideas, though there are still opportunities to refine clarity and precision in certain sections."
++        }
++        
++        // Create mock improvement suggestions
++        let suggestions = [
++            WritingAnalysis.ImprovementSuggestion(
++                title: "Enhance Sentence Variety",
++                summary: "Develop more complex sentence structures by combining simple sentences and varying sentence length for better rhythm and flow.",
++                beforeExample: "The cat sat on the mat. It was warm. The cat liked it.",
++                afterExample: "The cat settled comfortably on the warm mat, purring with contentment as it found the perfect sunny spot.",
++                resources: [
++                    .init(
++                        authorName: "William Strunk Jr.",
++                        workTitle: "The Elements of Style",
++                        type: .book
++                    ),
++                    .init(
++                        authorName: "Joseph M. Williams",
++                        workTitle: "Style: Toward Clarity and Grace",
++                        type: .book
++                    )
++                ]
++            ),
++            WritingAnalysis.ImprovementSuggestion(
++                title: "Strengthen Transitions",
++                summary: "Master the art of connecting ideas smoothly between sentences and paragraphs using transitional phrases and logical flow.",
++                beforeExample: "We went to the store. We bought groceries. We came home.",
++                afterExample: "After arriving at the store, we carefully selected our groceries and then returned home with our purchases.",
++                resources: [
++                    .init(
++                        authorName: "Diana Hacker",
++                        workTitle: "A Writer's Reference",
++                        type: .book
++                    ),
++                    .init(
++                        authorName: "Anne Lamott",
++                        workTitle: "Bird by Bird",
++                        type: .book
++                    )
++                ]
++            ),
++            WritingAnalysis.ImprovementSuggestion(
++                title: "Expand Vocabulary Range",
++                summary: "Incorporate more precise and varied word choices to add depth and nuance to your writing.",
++                beforeExample: "The movie was good. The actors were good. The story was good.",
++                afterExample: "The film was captivating, featuring compelling performances and an intricate plot that kept viewers engaged throughout.",
++                resources: [
++                    .init(
++                        authorName: "Merriam-Webster",
++                        workTitle: "Merriam-Webster's Vocabulary Builder",
++                        type: .book
++                    ),
++                    .init(
++                        authorName: "Oxford University",
++                        workTitle: "Oxford Thesaurus of English",
++                        type: .book
++                    ),
++                    .init(
++                        authorName: "Marvin Terban",
++                        workTitle: "Building Your Vocabulary",
++                        type: .course
++                    )
++                ]
++            )
++        ]
++        
++        let methodology = "This assessment uses a combination of Flesch-Kincaid readability analysis, sentence structure evaluation, and vocabulary sophistication metrics to provide personalized writing improvement recommendations. The analysis considers factors such as sentence length, word complexity, and structural patterns to identify specific areas for improvement."
++        
++        return WritingAnalysis(
++            timestamp: Date(),
++            metrics: metrics,
++            assessment: assessment,
++            improvementSuggestions: suggestions,
++            methodology: methodology
++        )
++    }
++    
++    func exploreItemReasoning(_ item: WritingAnalysis.ImprovementSuggestion, options: WritingAnalysisOptions) async throws -> String {
++        // Simulate network delay
++        try await simulateNetworkDelay()
++        
++        // Return a detailed explanation based on the item title
++        switch item.title {
++        case "Enhance Sentence Variety":
++            return """
++            # Why Sentence Variety Matters
++            
++            Sentence variety is one of the most powerful tools in a writer's toolkit. When you vary your sentence structures, lengths, and patterns, several important things happen:
++            
++            ## 1. Improved Reader Engagement
++            
++            The human brain craves novelty and pattern recognition. When all sentences follow the same structure (especially short, simple sentences), readers quickly become bored. Varied sentences create a rhythm that keeps readers engaged and interested in your text.
++            
++            ## 2. Enhanced Clarity and Emphasis
++            
++            Different sentence structures allow you to emphasize different elements:
++            - Short sentences can create impact and drama
++            - Complex sentences can show relationships between ideas
++            - Compound sentences can join related thoughts
++            - Periodic sentences (where the main point comes at the end) can build suspense
++            
++            ## 3. Better Expression of Complex Ideas
++            
++            Some thoughts simply cannot be expressed effectively in simple sentences. Complex ideas often require complex sentences with multiple clauses to show relationships between concepts.
++            
++            ## Common Mistakes Writers Make
++            
++            1. **Monotonous rhythm**: Using the same sentence pattern repeatedly
++            2. **Excessive simplicity**: Relying only on simple subject-verb sentences
++            3. **Sentence fragments**: Using incomplete thoughts when full sentences would be more effective
++            4. **Run-on sentences**: Joining too many ideas without proper punctuation
++            
++            ## Practical Exercises
++            
++            1. **Sentence combining**: Take 3-5 simple sentences and combine them in different ways
++            2. **Imitation practice**: Copy the sentence patterns from writers you admire
++            3. **Sentence start variation**: Rewrite a paragraph ensuring no two consecutive sentences begin the same way
++            4. **Sentence length mapping**: Create a visual map of sentence lengths in your writing to identify patterns
++            
++            The improvement from "\(item.beforeExample)" to "\(item.afterExample)" demonstrates how combining simple ideas into a more complex structure creates a richer, more engaging reading experience while conveying the same basic information.
++            """
++            
++        case "Strengthen Transitions":
++            return """
++            # The Power of Effective Transitions
++            
++            Transitions are the bridges between ideas in your writing. They guide readers from one thought to the next, creating a smooth and logical flow. Without strong transitions, writing feels choppy and disconnected, forcing readers to do extra cognitive work.
++            
++            ## 1. Creating Coherence
++            
++            Transitions establish logical connections between ideas, paragraphs, and sections. They help readers understand how information is related:
++            - Is this a contrast to the previous point? ("However," "Nevertheless")
++            - Is this additional support? ("Furthermore," "Moreover")
++            - Is this a consequence? ("Therefore," "As a result")
++            - Is this a time sequence? ("Subsequently," "Meanwhile")
++            
++            ## 2. Demonstrating Critical Thinking
++            
++            The transitions you choose reveal your thinking process. They show how ideas connect and build upon each other, demonstrating the sophistication of your analysis.
++            
++            ## 3. Improving Readability
++            
++            Good transitions reduce cognitive load for readers. They don't have to pause and figure out how ideas connect—the connection is made explicit.
++            
++            ## Common Mistakes Writers Make
++            
++            1. **Missing transitions**: Jumping between ideas without connecting them
++            2. **Overusing the same transitions**: Repeatedly using "also" or "additionally" 
++            3. **Using inappropriate transitions**: Creating illogical connections
++            4. **Relying only on single-word transitions**: Missing opportunities for more sophisticated transitional phrases
++            
++            ## Practical Exercises
++            
++            1. **Transition inventory**: Make a list of transitions grouped by function (contrast, addition, causation, etc.)
++            2. **Paragraph linking**: Practice writing transitions between paragraphs that summarize the previous idea and introduce the next
++            3. **Transition hunt**: Analyze professional writing to identify and categorize transitions
++            4. **Revision focus**: Review your writing specifically looking for places to add or improve transitions
++            
++            The improvement from "\(item.beforeExample)" to "\(item.afterExample)" shows how proper transitions create a narrative flow, connecting actions in a logical sequence rather than presenting them as disconnected events.
++            """
++            
++        case "Expand Vocabulary Range":
++            return """
++            # The Impact of a Rich Vocabulary
++            
++            Vocabulary is the raw material of writing. Just as a painter needs a full palette of colors, a writer needs a diverse range of words to express nuanced ideas with precision and style.
++            
++            ## 1. Precision and Clarity
++            
++            Generic words like "good," "bad," "nice," and "interesting" are vague and open to interpretation. Specific words like "captivating," "compelling," and "intricate" communicate exact shades of meaning, leading to clearer communication.
++            
++            ## 2. Emotional Resonance
++            
++            Rich vocabulary allows writers to evoke specific emotional responses. Compare:
++            - "The food was good" vs. "The meal was sumptuous"
++            - "The man was sad" vs. "The man was despondent"
++            
++            The second options create stronger and more specific emotional impressions.
++            
++            ## 3. Intellectual Depth
++            
++            A varied vocabulary signals intellectual sophistication and deep engagement with your subject matter. It demonstrates that you've thought carefully about your ideas and how to express them.
++            
++            ## Common Mistakes Writers Make
++            
++            1. **Word repetition**: Using the same words repeatedly throughout a text
++            2. **Relying on intensifiers**: Using "very," "really," and "extremely" instead of choosing more powerful words
++            3. **Jargon without purpose**: Using specialized vocabulary to impress rather than to clarify
++            4. **Thesaurus abuse**: Selecting words based solely on rarity without understanding nuances of meaning
++            
++            ## Practical Exercises
++            
++            1. **Word replacement**: Identify repeated words in your writing and find varied alternatives
++            2. **Word collection**: Keep a journal of interesting words you encounter in reading
++            3. **Synonym exploration**: For common words you use, list 5-10 alternatives with subtle differences
++            4. **Domain-specific vocabulary**: Build specialized vocabulary in your areas of interest
++            
++            The improvement from "\(item.beforeExample)" to "\(item.afterExample)" demonstrates how precise word choices ("captivating" instead of "good," "compelling" instead of "good," "intricate" instead of "good") create a more vivid and specific description, elevating the writing from generic to engaging.
++            """
++            
++        default:
++            return """
++            # Detailed Analysis: \(item.title)
++            
++            The improvement area "\(item.title)" focuses on an essential aspect of effective writing. As shown in the example, the difference between:
++            
++            Original: "\(item.beforeExample)"
++            
++            Improved: "\(item.afterExample)"
++            
++            demonstrates significant enhancement in both clarity and impact.
++            
++            ## Writing Principles at Work
++            
++            This improvement applies several fundamental writing principles:
++            
++            1. **Clarity of expression**: Making ideas immediately accessible to readers
++            2. **Economy of language**: Using the optimal number of words to express an idea
++            3. **Rhetorical effectiveness**: Structuring content for maximum impact
++            4. **Reader engagement**: Maintaining interest through varied and dynamic writing
++            
++            ## Impact on Reader Comprehension
++            
++            Readers process writing both intellectually and emotionally. The improved version enhances comprehension by:
++            
++            - Reducing cognitive load through clearer structure
++            - Creating stronger associations between ideas
++            - Establishing a more natural flow that matches how people think
++            - Allowing readers to focus on content rather than deciphering meaning
++            
++            ## Common Pitfalls
++            
++            Writers frequently struggle in this area by:
++            
++            1. Focusing too much on what they want to say rather than how readers will receive it
++            2. Assuming that their meaning is obvious when it may not be to others
++            3. Failing to review their work from a reader's perspective
++            4. Becoming too attached to their initial drafts
++            
++            ## Development Exercises
++            
++            To strengthen your skills in this area:
++            
++            1. **Comparative analysis**: Study before/after examples like the one provided
++            2. **Targeted revision**: Practice rewriting passages with this specific improvement in mind
++            3. **Peer feedback**: Ask others to identify places where your writing could be clearer or more effective
++            4. **Reading aloud**: Vocalize your writing to identify awkward or unclear passages
++            
++            With consistent practice and attention to these principles, you'll naturally incorporate this improvement into your regular writing process.
++            """
++        }
++    }
++}
+\ No newline at end of file
+diff --git a/FoundationWriting/WritingAnalysisService 2.swift b/FoundationWriting/WritingAnalysisService 2.swift
+new file mode 100644
+index 0000000..f5f49d2
+--- /dev/null
++++ b/FoundationWriting/WritingAnalysisService 2.swift	
+@@ -0,0 +1,137 @@
++//  WritingAnalysisService.swift - Protocol for writing analysis using Foundation Models
++//  Created on 2025-07-13
++
++import Foundation
++import FoundationModels
++
++/// Configuration options for writing analysis
++struct WritingAnalysisOptions {
++    /// Controls the variety in response generation (0.0-1.0)
++    /// Lower values produce more consistent, focused results
++    let temperature: Double
++    
++    /// Controls analytical strictness of writing evaluation (0.0-1.0)
++    /// Higher values produce more critical assessments
++    let strictness: Double
++    
++    /// Maximum tokens to generate in response
++    let maxTokens: Int
++    
++    /// Writing style to target in recommendations (academic, creative, business, etc.)
++    let targetStyle: String?
++    
++    /// Initializer with default values
++    init(
++        temperature: Double = 0.5,
++        strictness: Double = 0.5,
++        maxTokens: Int = 2048,
++        targetStyle: String? = nil
++    ) {
++        self.temperature = temperature
++        self.strictness = strictness
++        self.maxTokens = maxTokens
++        self.targetStyle = targetStyle
++    }
++}
++
++/// Structured writing analysis result
++struct WritingAnalysis {
++    /// Basic readability metrics
++    struct ReadabilityMetrics {
++        let fleschKincaidGrade: Double
++        let fleschKincaidLabel: String
++        let averageSentenceLength: Double
++        let averageWordLength: Double
++        let vocabularyDiversity: Double
++    }
++    
++    /// Specific suggestion for writing improvement
++    struct ImprovementSuggestion: Identifiable {
++        let id = UUID()
++        let title: String
++        let summary: String
++        let beforeExample: String
++        let afterExample: String
++        let resources: [Resource]
++        
++        struct Resource: Identifiable {
++            let id = UUID()
++            let authorName: String
++            let workTitle: String
++            let type: ResourceType
++            
++            enum ResourceType: String, Codable {
++                case book, article, video, course, website
++            }
++        }
++    }
++    
++    /// Unique identifier for the analysis
++    let id = UUID()
++    
++    /// Timestamp when analysis was performed
++    let timestamp: Date
++    
++    /// Readability metrics for the analyzed text
++    let metrics: ReadabilityMetrics
++    
++    /// Overall assessment of the writing
++    let assessment: String
++    
++    /// Specific improvement suggestions
++    let improvementSuggestions: [ImprovementSuggestion]
++    
++    /// Description of the methodology used for analysis
++    let methodology: String
++}
++
++/// Protocol for writing analysis services using Foundation Models
++protocol WritingAnalysisService {
++    /// Analyzes a writing sample
++    /// - Parameters:
++    ///   - text: Writing sample to analyze
++    ///   - options: Configuration for analysis
++    /// - Returns: Structured writing analysis
++    /// - Throws: Errors during analysis process
++    func analyzeWriting(_ text: String, 
++                        options: WritingAnalysisOptions) async throws -> WritingAnalysis
++    
++    /// Explores reasoning for a specific improvement suggestion
++    /// - Parameters:
++    ///   - item: Improvement suggestion to explore
++    ///   - options: Configuration for reasoning generation
++    /// - Returns: Detailed reasoning text
++    /// - Throws: Errors during reasoning generation
++    func exploreItemReasoning(_ item: WritingAnalysis.ImprovementSuggestion, 
++                              options: WritingAnalysisOptions) async throws -> String
++}
++
++/// Errors that can occur during writing analysis
++enum WritingAnalysisError: Error {
++    case emptyText
++    case modelLoadFailure(String)
++    case responseParsingFailure(String)
++    case tokenLimitExceeded
++    case apiUnavailable(String)
++    case networkError(Error)
++    case unexpectedError(Error)
++    
++    var localizedDescription: String {
++        switch self {
++        case .emptyText:
++            return "Please provide text to analyze."
++        case .modelLoadFailure(let details):
++            return "Failed to load language model: \(details)"
++        case .responseParsingFailure(let details):
++            return "Failed to parse model response: \(details)"
++        case .tokenLimitExceeded:
++            return "Text exceeds the maximum allowed length."
++        case .apiUnavailable(let details):
++            return "API service unavailable: \(details)"
++        case .networkError(let error):
++            return "Network error: \(error.localizedDescription)"
++        case .unexpectedError(let error):
++            return "Unexpected error: \(error.localizedDescription)"
++        }
++    }
++}
+\ No newline at end of file
+diff --git a/FoundationWriting/WritingAnalysisService.swift b/FoundationWriting/WritingAnalysisService.swift
+new file mode 100644
+index 0000000..e5a7f61
+--- /dev/null
++++ b/FoundationWriting/WritingAnalysisService.swift
+@@ -0,0 +1,849 @@
++//
++//  WritingAnalysisService.swift
++//  Writing Coach
++//
++//  Created for macOS 26 beta 3 on 2025-07-13
++//
++
++import Foundation
++import FoundationModels
++
++// MARK: - Error Types
++
++/// Comprehensive error handling for writing analysis operations
++enum WritingAnalysisError: Error, LocalizedError {
++    case emptyInput
++    case modelUnavailable
++    case invalidResponse(String)
++    case parsingFailed(Error)
++    case analysisTimeout
++    case networkError(Error)
++    case serviceUnavailable(String)
++    
++    var errorDescription: String? {
++        switch self {
++        case .emptyInput:
++            return "Please provide text to analyze."
++        case .modelUnavailable:
++            return "The writing analysis model is currently unavailable."
++        case .invalidResponse(let details):
++            return "Received an invalid response: \(details)"
++        case .parsingFailed(let error):
++            return "Failed to parse analysis results: \(error.localizedDescription)"
++        case .analysisTimeout:
++            return "Analysis timed out. Please try again."
++        case .networkError(let error):
++            return "Network error: \(error.localizedDescription)"
++        case .serviceUnavailable(let reason):
++            return "Service unavailable: \(reason)"
++        }
++    }
++}
++
++// MARK: - Analysis Models
++
++/// Comprehensive writing analysis result
++struct WritingAnalysis {
++    /// Readability metrics
++    struct ReadabilityMetrics {
++        let fleschKincaidGrade: Double
++        let fleschKincaidLabel: String
++        let averageSentenceLength: Double
++        let averageWordLength: Double
++        let vocabularyDiversity: Double
++    }
++    
++    /// Reference to writing resources
++    struct Reference: Identifiable, Equatable {
++        let id = UUID()
++        let author: String
++        let work: String
++        let relevance: String
++        
++        static func == (lhs: Reference, rhs: Reference) -> Bool {
++            lhs.id == rhs.id
++        }
++    }
++    
++    /// Detailed improvement suggestion
++    struct ImprovementSuggestion: Identifiable, Equatable {
++        let id = UUID()
++        let title: String
++        let area: String // e.g., "Grammar", "Style", "Clarity"
++        let description: String
++        let before: String
++        let after: String
++        let priority: Int // 1-5 scale, 5 being highest priority
++        let references: [Reference]
++        let additionalNotes: String?
++        
++        static func == (lhs: ImprovementSuggestion, rhs: ImprovementSuggestion) -> Bool {
++            lhs.id == rhs.id
++        }
++    }
++    
++    /// Overall assessment of the writing
++    struct Assessment {
++        let strengths: [String]
++        let weaknesses: [String]
++        let overallLevel: String
++        let summary: String
++    }
++    
++    let readabilityMetrics: ReadabilityMetrics
++    let improvementSuggestions: [ImprovementSuggestion]
++    let assessment: Assessment
++    let timestamp: Date
++    let analysisVersion: String
++}
++
++// MARK: - Analysis Configuration
++
++/// Configuration options for writing analysis
++struct WritingAnalysisOptions {
++    /// The language model to use for analysis
++    enum ModelType {
++        case small
++        case medium
++        case large
++        
++        var modelName: String {
++            switch self {
++            case .small: return "foundation-writing-small"
++            case .medium: return "foundation-writing-medium"
++            case .large: return "foundation-writing-large"
++            }
++        }
++    }
++    
++    /// The focus of the analysis
++    enum AnalysisFocus: String, CaseIterable {
++        case academic = "Academic Writing"
++        case creative = "Creative Writing"
++        case technical = "Technical Documentation"
++        case business = "Business Communication"
++        case general = "General Purpose"
++    }
++    
++    /// The level of creativity vs determinism in suggestions
++    /// Higher values = more creative but potentially less reliable
++    /// Lower values = more deterministic and consistent
++    let temperature: Double
++    
++    /// The model to use for analysis
++    let modelType: ModelType
++    
++    /// Primary focus of the analysis
++    let focus: AnalysisFocus
++    
++    /// Maximum tokens to generate in the response
++    let maxResponseTokens: Int
++    
++    /// Timeout for analysis operations (in seconds)
++    let timeout: TimeInterval
++    
++    /// Create options with sensible defaults
++    static func createDefault() -> WritingAnalysisOptions {
++        WritingAnalysisOptions(
++            temperature: 0.3,
++            modelType: .medium,
++            focus: .general,
++            maxResponseTokens: 2048,
++            timeout: 30.0
++        )
++    }
++}
++
++// MARK: - Protocol Definition
++
++/// Protocol for writing analysis services using Foundation Models
++protocol WritingAnalysisService {
++    /// Analyzes a writing sample and provides structured feedback
++    /// - Parameters:
++    ///   - text: The writing sample to be analyzed
++    ///   - options: Configuration options for the analysis
++    /// - Returns: A structured analysis of the writing sample
++    /// - Throws: WritingAnalysisError if analysis fails
++    func analyzeWriting(_ text: String, 
++                        options: WritingAnalysisOptions) async throws -> WritingAnalysis
++    
++    /// Provides deep reasoning for a specific learning plan item
++    /// - Parameters:
++    ///   - item: The improvement suggestion to explore
++    ///   - options: Configuration options for the reasoning generation
++    /// - Returns: Detailed reasoning behind the suggested improvement
++    /// - Throws: WritingAnalysisError if reasoning generation fails
++    func exploreItemReasoning(_ item: WritingAnalysis.ImprovementSuggestion, 
++                              options: WritingAnalysisOptions) async throws -> String
++    
++    /// Generates a complete learning plan based on the analysis
++    /// - Parameters:
++    ///   - analysis: The writing analysis to base the plan on
++    ///   - timeframe: The time period for the learning plan (in weeks)
++    /// - Returns: A structured learning plan with timeline and exercises
++    /// - Throws: WritingAnalysisError if plan generation fails
++    func generateLearningPlan(from analysis: WritingAnalysis, 
++                              timeframe: Int) async throws -> LearningPlan
++}
++
++// MARK: - Learning Plan Model
++
++/// Comprehensive learning plan for improving writing
++struct LearningPlan: Identifiable {
++    let id = UUID()
++    
++    /// A specific exercise in the learning plan
++    struct Exercise: Identifiable {
++        let id = UUID()
++        let title: String
++        let description: String
++        let estimatedTime: TimeInterval // in minutes
++        let difficulty: Int // 1-5 scale
++        let targetSkill: String
++        let instructions: String
++        let example: String?
++    }
++    
++    /// A milestone in the learning journey
++    struct Milestone: Identifiable {
++        let id = UUID()
++        let title: String
++        let description: String
++        let exercises: [Exercise]
++        let weekNumber: Int
++    }
++    
++    let title: String
++    let overview: String
++    let milestones: [Milestone]
++    let totalDuration: Int // in weeks
++    let targetSkills: [String]
++    let creationDate: Date
++}
++
++// MARK: - Foundation Models Implementation
++
++/// Implementation of WritingAnalysisService using Apple's Foundation Models
++class FoundationModelsWritingService: WritingAnalysisService {
++    private let analysisVersion = "1.0.0"
++    
++    func analyzeWriting(_ text: String, 
++                         options: WritingAnalysisOptions = .createDefault()) async throws -> WritingAnalysis {
++        // Validate input
++        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
++            throw WritingAnalysisError.emptyInput
++        }
++        
++        do {
++            // Configure the language model
++            let modelConfig = LanguageModel(
++                namespace: .apple,
++                name: options.modelType.modelName,
++                variant: .large
++            )
++            
++            // Create session
++            let sessionConfig = LanguageModelSession.Configuration(model: modelConfig)
++            let session = try LanguageModelSession(configuration: sessionConfig)
++            
++            // Prepare generation options
++            let generationOptions = LanguageModelSession.GenerationOptions(
++                temperature: options.temperature,
++                maximumResponseTokens: options.maxResponseTokens
++            )
++            
++            // Construct prompt for structured analysis
++            let prompt = buildAnalysisPrompt(text: text, focus: options.focus)
++            
++            // Execute with timeout
++            let result = try await withTimeout(seconds: options.timeout) {
++                try await session.respond(to: prompt, options: generationOptions)
++            }
++            
++            // Parse the result
++            return try parseAnalysisResponse(result.text)
++            
++        } catch let error as WritingAnalysisError {
++            throw error
++        } catch {
++            throw WritingAnalysisError.networkError(error)
++        }
++    }
++    
++    func exploreItemReasoning(_ item: WritingAnalysis.ImprovementSuggestion, 
++                              options: WritingAnalysisOptions = .createDefault()) async throws -> String {
++        do {
++            // Configure the language model
++            let modelConfig = LanguageModel(
++                namespace: .apple,
++                name: options.modelType.modelName,
++                variant: .large
++            )
++            
++            // Create session
++            let sessionConfig = LanguageModelSession.Configuration(model: modelConfig)
++            let session = try LanguageModelSession(configuration: sessionConfig)
++            
++            // Prepare generation options
++            let generationOptions = LanguageModelSession.GenerationOptions(
++                temperature: options.temperature,
++                maximumResponseTokens: options.maxResponseTokens
++            )
++            
++            // Build reasoning prompt
++            let prompt = """
++            Provide detailed linguistic reasoning for the following writing improvement:
++            
++            Area: \(item.area)
++            Title: \(item.title)
++            
++            ORIGINAL TEXT:
++            "\(item.before)"
++            
++            IMPROVED VERSION:
++            "\(item.after)"
++            
++            Explain in detail:
++            1. The specific issues with the original text
++            2. The linguistic principles behind the improvement
++            3. How the changes enhance clarity, readability, or impact
++            4. Additional examples of similar improvements
++            
++            Focus: \(options.focus.rawValue)
++            """
++            
++            // Execute with timeout
++            let result = try await withTimeout(seconds: options.timeout) {
++                try await session.respond(to: prompt, options: generationOptions)
++            }
++            
++            return result.text
++            
++        } catch let error as WritingAnalysisError {
++            throw error
++        } catch {
++            throw WritingAnalysisError.networkError(error)
++        }
++    }
++    
++    func generateLearningPlan(from analysis: WritingAnalysis, 
++                              timeframe: Int) async throws -> LearningPlan {
++        do {
++            // Configure the language model
++            let modelConfig = LanguageModel(
++                namespace: .apple,
++                name: "foundation-writing-large",
++                variant: .large
++            )
++            
++            // Create session
++            let sessionConfig = LanguageModelSession.Configuration(model: modelConfig)
++            let session = try LanguageModelSession(configuration: sessionConfig)
++            
++            // Prepare generation options
++            let generationOptions = LanguageModelSession.GenerationOptions(
++                temperature: 0.4,
++                maximumResponseTokens: 4096
++            )
++            
++            // Build a list of weaknesses and improvement areas
++            let weaknesses = analysis.assessment.weaknesses.joined(separator: ", ")
++            let improvementAreas = analysis.improvementSuggestions
++                .map { "• \($0.title): \($0.description)" }
++                .joined(separator: "\n")
++            
++            // Build learning plan prompt
++            let prompt = """
++            Create a \(timeframe)-week learning plan to improve writing skills based on this analysis:
++            
++            CURRENT LEVEL: \(analysis.assessment.overallLevel)
++            
++            WEAKNESSES TO ADDRESS:
++            \(weaknesses)
++            
++            IMPROVEMENT AREAS:
++            \(improvementAreas)
++            
++            Format the response as structured JSON with the following format:
++            {
++              "title": "Personalized Writing Improvement Plan",
++              "overview": "Overview of the plan",
++              "targetSkills": ["skill1", "skill2"],
++              "milestones": [
++                {
++                  "weekNumber": 1,
++                  "title": "Week 1: Focus Area",
++                  "description": "What to focus on this week",
++                  "exercises": [
++                    {
++                      "title": "Exercise title",
++                      "description": "Short description",
++                      "estimatedTime": 30,
++                      "difficulty": 2,
++                      "targetSkill": "skill name",
++                      "instructions": "Detailed instructions",
++                      "example": "Example of the exercise"
++                    }
++                  ]
++                }
++              ]
++            }
++            
++            Include 2-3 exercises per week, with progressive difficulty.
++            """
++            
++            // Execute with timeout
++            let result = try await withTimeout(seconds: 60.0) {
++                try await session.respond(to: prompt, options: generationOptions)
++            }
++            
++            return try parseLearningPlanResponse(result.text, timeframe: timeframe)
++            
++        } catch let error as WritingAnalysisError {
++            throw error
++        } catch {
++            throw WritingAnalysisError.networkError(error)
++        }
++    }
++    
++    // MARK: - Private Helper Methods
++    
++    private func withTimeout<T>(seconds: TimeInterval, operation: () async throws -> T) async throws -> T {
++        try await withThrowingTaskGroup(of: T.self) { group in
++            group.addTask {
++                try await operation()
++            }
++            
++            group.addTask {
++                try await Task.sleep(for: .seconds(seconds))
++                throw WritingAnalysisError.analysisTimeout
++            }
++            
++            // Return the first completed result or throw the first error
++            let result = try await group.next()!
++            group.cancelAll()
++            return result
++        }
++    }
++    
++    private func buildAnalysisPrompt(text: String, focus: WritingAnalysisOptions.AnalysisFocus) -> String {
++        """
++        Analyze this writing sample and provide a comprehensive assessment. Focus: \(focus.rawValue).
++        
++        WRITING SAMPLE:
++        \(text)
++        
++        Return a structured JSON response with the following format:
++        {
++          "readabilityMetrics": {
++            "fleschKincaidGrade": 0.0,
++            "fleschKincaidLabel": "label",
++            "averageSentenceLength": 0.0,
++            "averageWordLength": 0.0,
++            "vocabularyDiversity": 0.0
++          },
++          "assessment": {
++            "strengths": ["strength1", "strength2"],
++            "weaknesses": ["weakness1", "weakness2"],
++            "overallLevel": "level",
++            "summary": "summary text"
++          },
++          "improvementSuggestions": [
++            {
++              "title": "title",
++              "area": "area",
++              "description": "description",
++              "before": "before example",
++              "after": "after example",
++              "priority": 3,
++              "references": [
++                {"author": "author name", "work": "work title", "relevance": "why relevant"}
++              ],
++              "additionalNotes": "notes"
++            }
++          ]
++        }
++        
++        Calculate Flesch-Kincaid grade level and provide accurate readability metrics. For each suggestion, include concrete before/after examples from the text where possible.
++        """
++    }
++    
++    private func parseAnalysisResponse(_ jsonText: String) throws -> WritingAnalysis {
++        // Clean up potential markdown formatting
++        let cleaned = jsonText
++            .replacingOccurrences(of: "(?m)^\\s*```(?:json)?\\s*$", with: "", options: .regularExpression)
++            .replacingOccurrences(of: "(?m)^\\s*```\\s*$", with: "", options: .regularExpression)
++            .trimmingCharacters(in: .whitespacesAndNewlines)
++        
++        struct RawReadabilityMetrics: Codable {
++            let fleschKincaidGrade: Double
++            let fleschKincaidLabel: String
++            let averageSentenceLength: Double
++            let averageWordLength: Double
++            let vocabularyDiversity: Double
++        }
++        
++        struct RawAssessment: Codable {
++            let strengths: [String]
++            let weaknesses: [String]
++            let overallLevel: String
++            let summary: String
++        }
++        
++        struct RawReference: Codable {
++            let author: String
++            let work: String
++            let relevance: String
++        }
++        
++        struct RawImprovementSuggestion: Codable {
++            let title: String
++            let area: String
++            let description: String
++            let before: String
++            let after: String
++            let priority: Int
++            let references: [RawReference]
++            let additionalNotes: String?
++        }
++        
++        struct RawAnalysisResponse: Codable {
++            let readabilityMetrics: RawReadabilityMetrics
++            let assessment: RawAssessment
++            let improvementSuggestions: [RawImprovementSuggestion]
++        }
++        
++        do {
++            guard let data = cleaned.data(using: .utf8) else {
++                throw WritingAnalysisError.invalidResponse("Could not convert response to data")
++            }
++            
++            let parsed = try JSONDecoder().decode(RawAnalysisResponse.self, from: data)
++            
++            let metrics = WritingAnalysis.ReadabilityMetrics(
++                fleschKincaidGrade: parsed.readabilityMetrics.fleschKincaidGrade,
++                fleschKincaidLabel: parsed.readabilityMetrics.fleschKincaidLabel,
++                averageSentenceLength: parsed.readabilityMetrics.averageSentenceLength,
++                averageWordLength: parsed.readabilityMetrics.averageWordLength,
++                vocabularyDiversity: parsed.readabilityMetrics.vocabularyDiversity
++            )
++            
++            let assessment = WritingAnalysis.Assessment(
++                strengths: parsed.assessment.strengths,
++                weaknesses: parsed.assessment.weaknesses,
++                overallLevel: parsed.assessment.overallLevel,
++                summary: parsed.assessment.summary
++            )
++            
++            let suggestions = parsed.improvementSuggestions.map { raw in
++                WritingAnalysis.ImprovementSuggestion(
++                    title: raw.title,
++                    area: raw.area,
++                    description: raw.description,
++                    before: raw.before,
++                    after: raw.after,
++                    priority: raw.priority,
++                    references: raw.references.map { ref in
++                        WritingAnalysis.Reference(
++                            author: ref.author,
++                            work: ref.work,
++                            relevance: ref.relevance
++                        )
++                    },
++                    additionalNotes: raw.additionalNotes
++                )
++            }
++            
++            return WritingAnalysis(
++                readabilityMetrics: metrics,
++                improvementSuggestions: suggestions,
++                assessment: assessment,
++                timestamp: Date(),
++                analysisVersion: analysisVersion
++            )
++            
++        } catch {
++            throw WritingAnalysisError.parsingFailed(error)
++        }
++    }
++    
++    private func parseLearningPlanResponse(_ jsonText: String, timeframe: Int) throws -> LearningPlan {
++        // Clean up potential markdown formatting
++        let cleaned = jsonText
++            .replacingOccurrences(of: "(?m)^\\s*```(?:json)?\\s*$", with: "", options: .regularExpression)
++            .replacingOccurrences(of: "(?m)^\\s*```\\s*$", with: "", options: .regularExpression)
++            .trimmingCharacters(in: .whitespacesAndNewlines)
++        
++        struct RawExercise: Codable {
++            let title: String
++            let description: String
++            let estimatedTime: Int
++            let difficulty: Int
++            let targetSkill: String
++            let instructions: String
++            let example: String?
++        }
++        
++        struct RawMilestone: Codable {
++            let weekNumber: Int
++            let title: String
++            let description: String
++            let exercises: [RawExercise]
++        }
++        
++        struct RawLearningPlan: Codable {
++            let title: String
++            let overview: String
++            let targetSkills: [String]
++            let milestones: [RawMilestone]
++        }
++        
++        do {
++            guard let data = cleaned.data(using: .utf8) else {
++                throw WritingAnalysisError.invalidResponse("Could not convert response to data")
++            }
++            
++            let parsed = try JSONDecoder().decode(RawLearningPlan.self, from: data)
++            
++            let milestones = parsed.milestones.map { raw in
++                LearningPlan.Milestone(
++                    title: raw.title,
++                    description: raw.description,
++                    exercises: raw.exercises.map { ex in
++                        LearningPlan.Exercise(
++                            title: ex.title,
++                            description: ex.description,
++                            estimatedTime: TimeInterval(ex.estimatedTime * 60), // convert to seconds
++                            difficulty: ex.difficulty,
++                            targetSkill: ex.targetSkill,
++                            instructions: ex.instructions,
++                            example: ex.example
++                        )
++                    },
++                    weekNumber: raw.weekNumber
++                )
++            }
++            
++            return LearningPlan(
++                title: parsed.title,
++                overview: parsed.overview,
++                milestones: milestones,
++                totalDuration: timeframe,
++                targetSkills: parsed.targetSkills,
++                creationDate: Date()
++            )
++            
++        } catch {
++            throw WritingAnalysisError.parsingFailed(error)
++        }
++    }
++}
++
++// MARK: - Mock Implementation for Development/Testing
++
++/// Mock implementation of WritingAnalysisService for development and testing
++class MockWritingAnalysisService: WritingAnalysisService {
++    func analyzeWriting(_ text: String, 
++                         options: WritingAnalysisOptions = .createDefault()) async throws -> WritingAnalysis {
++        // Simulate network delay
++        try await Task.sleep(for: .seconds(2))
++        
++        // Create mock readability metrics
++        let metrics = WritingAnalysis.ReadabilityMetrics(
++            fleschKincaidGrade: 9.2,
++            fleschKincaidLabel: "Advanced",
++            averageSentenceLength: 15.6,
++            averageWordLength: 4.8,
++            vocabularyDiversity: 0.72
++        )
++        
++        // Create mock assessment
++        let assessment = WritingAnalysis.Assessment(
++            strengths: [
++                "Strong vocabulary usage",
++                "Good paragraph structure",
++                "Effective use of examples"
++            ],
++            weaknesses: [
++                "Sentence variety could be improved",
++                "Some passive voice constructions",
++                "Transitions between ideas need work"
++            ],
++            overallLevel: "Intermediate-Advanced",
++            summary: "Your writing demonstrates strong command of language with clear structure and appropriate vocabulary. Areas for improvement include developing more varied sentence patterns and strengthening the connections between ideas."
++        )
++        
++        // Create mock improvement suggestions
++        let suggestions = [
++            WritingAnalysis.ImprovementSuggestion(
++                title: "Enhance Sentence Variety",
++                area: "Style",
++                description: "Develop more complex sentence structures by combining simple sentences and varying sentence length for better rhythm and flow.",
++                before: "The cat sat on the mat. It was warm. The cat liked it.",
++                after: "The cat settled comfortably on the warm mat, purring with contentment as it found the perfect sunny spot.",
++                priority: 4,
++                references: [
++                    WritingAnalysis.Reference(
++                        author: "William Strunk Jr.",
++                        work: "The Elements of Style",
++                        relevance: "Provides fundamental principles for sentence construction and variety"
++                    ),
++                    WritingAnalysis.Reference(
++                        author: "Joseph M. Williams",
++                        work: "Style: Toward Clarity and Grace",
++                        relevance: "Offers advanced techniques for sentence structure and flow"
++                    )
++                ],
++                additionalNotes: "Focus on combining related ideas into complex sentences while keeping clarity"
++            ),
++            WritingAnalysis.ImprovementSuggestion(
++                title: "Strengthen Transitions",
++                area: "Organization",
++                description: "Master the art of connecting ideas smoothly between sentences and paragraphs using transitional phrases and logical flow.",
++                before: "We went to the store. We bought groceries. We came home.",
++                after: "After arriving at the store, we carefully selected our groceries and then returned home with our purchases.",
++                priority: 3,
++                references: [
++                    WritingAnalysis.Reference(
++                        author: "Diana Hacker",
++                        work: "A Writer's Reference",
++                        relevance: "Contains extensive lists of transitional expressions by category"
++                    ),
++                    WritingAnalysis.Reference(
++                        author: "Anne Lamott",
++                        work: "Bird by Bird",
++                        relevance: "Discusses the natural flow of ideas in writing"
++                    )
++                ],
++                additionalNotes: nil
++            )
++        ]
++        
++        return WritingAnalysis(
++            readabilityMetrics: metrics,
++            improvementSuggestions: suggestions,
++            assessment: assessment,
++            timestamp: Date(),
++            analysisVersion: "1.0.0-mock"
++        )
++    }
++    
++    func exploreItemReasoning(_ item: WritingAnalysis.ImprovementSuggestion, 
++                              options: WritingAnalysisOptions = .createDefault()) async throws -> String {
++        // Simulate network delay
++        try await Task.sleep(for: .seconds(1.5))
++        
++        // Return mock reasoning based on the improvement suggestion
++        return """
++        # Detailed Reasoning: \(item.title)
++        
++        ## Issue Analysis
++        
++        The original text ("\(item.before)") exhibits several characteristics that reduce its effectiveness:
++        
++        1. **Structural monotony**: The sentences follow the same simple subject-verb pattern without variation
++        2. **Rhythm issues**: The uniform short sentences create a choppy, staccato rhythm
++        3. **Redundancy**: Information is repeated unnecessarily ("The cat" appears twice)
++        4. **Limited descriptive elements**: The writing lacks sensory details and precise verbs
++        
++        ## Linguistic Principles Applied
++        
++        The improved version ("\(item.after)") applies several linguistic principles:
++        
++        1. **Syntactic subordination**: Using dependent clauses to show relationships between ideas
++        2. **Lexical specificity**: Replacing generic verbs ("sat", "liked") with more precise ones ("settled", "purring")
++        3. **Descriptive enhancement**: Adding qualifiers ("comfortably", "perfect") that provide sensory information
++        4. **Cohesive devices**: Using connectives ("as") that improve flow between clauses
++        
++        ## Additional Examples
++        
++        Here are more examples applying similar principles:
++        
++        **Original**: "She opened the door. The room was dark. She turned on the light."
++        **Improved**: "Upon opening the door to the pitch-dark room, she immediately reached for the light switch."
++        
++        **Original**: "I read the book. It was interesting. I learned many facts."
++        **Improved**: "I found the book fascinating, as it provided numerous insights that expanded my knowledge."
++        
++        ## Application Strategy
++        
++        When revising your own writing, look for sequences of short, simple sentences that could be combined. Focus on:
++        
++        1. Identifying the logical relationships between ideas (cause/effect, sequence, contrast)
++        2. Selecting appropriate connecting devices (coordinating conjunctions, subordinating conjunctions, transitional phrases)
++        3. Eliminating unnecessary repetition of subjects and other elements
++        4. Enhancing precision through specific word choices
++        
++        These strategies will dramatically improve the sophistication and readability of your writing.
++        """
++    }
++    
++    func generateLearningPlan(from analysis: WritingAnalysis, 
++                              timeframe: Int) async throws -> LearningPlan {
++        // Simulate network delay
++        try await Task.sleep(for: .seconds(3))
++        
++        // Create mock learning plan
++        let milestones = [
++            LearningPlan.Milestone(
++                title: "Week 1: Sentence Construction Fundamentals",
++                description: "Focus on basic sentence patterns and variations to improve sentence variety.",
++                exercises: [
++                    LearningPlan.Exercise(
++                        title: "Sentence Combining",
++                        description: "Practice combining simple sentences into compound and complex sentences.",
++                        estimatedTime: 1800, // 30 minutes
++                        difficulty: 2,
++                        targetSkill: "Sentence Variety",
++                        instructions: "Take each set of simple sentences and combine them into a single, more complex sentence using coordinating and subordinating conjunctions.",
++                        example: "Original: The dog barked. The mail carrier arrived. The neighbors complained.\nCombined: When the mail carrier arrived, the dog barked loudly, causing the neighbors to complain."
++                    ),
++                    LearningPlan.Exercise(
++                        title: "Sentence Pattern Identification",
++                        description: "Identify and categorize different sentence patterns in a text.",
++                        estimatedTime: 1200, // 20 minutes
++                        difficulty: 1,
++                        targetSkill: "Grammatical Awareness",
++                        instructions: "Read the provided passage and identify each sentence as simple, compound, complex, or compound-complex. Then analyze the effect of sentence variety on readability.",
++                        example: "The leaves fell from the trees. [simple] The wind blew hard, and the temperature dropped. [compound]"
++                    )
++                ],
++                weekNumber: 1
++            ),
++            LearningPlan.Milestone(
++                title: "Week 2: Transition Techniques",
++                description: "Master the use of transitional expressions to improve flow between ideas.",
++                exercises: [
++                    LearningPlan.Exercise(
++                        title: "Transitional Expression Inventory",
++                        description: "Create a personal inventory of transitional expressions organized by function.",
++                        estimatedTime: 2700, // 45 minutes
++                        difficulty: 2,
++                        targetSkill: "Organization",
++                        instructions: "Research and compile at least 5 transitional expressions for each of these categories: addition, contrast, cause/effect, sequence, and conclusion. Create a reference sheet you can use in your writing.",
++                        example: "Addition: furthermore, moreover, additionally\nContrast: however, conversely, on the other hand"
++                    ),
++                    LearningPlan.Exercise(
++                        title: "Paragraph Flow Revision",
++                        description: "Revise paragraphs to improve connections between sentences.",
++                        estimatedTime: 1800, // 30 minutes
++                        difficulty: 3,
++                        targetSkill: "Cohesion",
++                        instructions: "Revise the provided paragraphs by adding appropriate transitional expressions, rearranging sentences for logical flow, and ensuring clear connections between ideas.",
++                        example: nil
++                    )
++                ],
++                weekNumber: 2
++            )
++        ]
++        
++        return LearningPlan(
++            title: "Personalized Writing Improvement Plan",
++            overview: "This 2-week plan focuses on improving sentence variety and transitions, which were identified as key areas for development in your writing sample.",
++            milestones: milestones,
++            totalDuration: timeframe,
++            targetSkills: ["Sentence Variety", "Transitions", "Organization", "Cohesion"],
++            creationDate: Date()
++        )
++    }
++}
+\ No newline at end of file
+diff --git a/FoundationWriting/WritingAnalysisTests.swift b/FoundationWriting/WritingAnalysisTests.swift
+new file mode 100644
+index 0000000..721f873
+--- /dev/null
++++ b/FoundationWriting/WritingAnalysisTests.swift
+@@ -0,0 +1,145 @@
++//
++//  WritingAnalysisTests.swift
++//  Writing Coach Tests
++//
++//  Created for macOS 26 beta 3 on 2025-07-13
++//
++
++import Testing
++import Foundation
++@testable import WritingCoach // Adjust to your app's module name
++
++@Suite("Writing Analysis Service Tests")
++struct WritingAnalysisTests {
++
++    // MARK: - Mock Service Tests
++    
++    @Test("Mock service produces valid analysis results")
++    func mockServiceProducesValidResults() async throws {
++        // Arrange
++        let service = MockWritingAnalysisService()
++        let sampleText = """
++        The quick brown fox jumps over the lazy dog. This is a sample text for
++        testing our writing analysis service. It contains multiple sentences and
++        should be sufficient for basic analysis testing.
++        """
++        
++        // Act
++        let analysis = try await service.analyzeWriting(sampleText)
++        
++        // Assert
++        #expect(!analysis.assessment.summary.isEmpty)
++        #expect(analysis.improvementSuggestions.count > 0)
++        #expect(analysis.readabilityMetrics.fleschKincaidGrade > 0)
++    }
++    
++    @Test("Empty text throws appropriate error")
++    func emptyTextThrowsError() async throws {
++        // Arrange
++        let service = MockWritingAnalysisService()
++        let emptyText = ""
++        
++        // Act and Assert
++        do {
++            _ = try await service.analyzeWriting(emptyText)
++            #expect(false, "Expected an error for empty text but none was thrown")
++        } catch let error as WritingAnalysisError {
++            #expect(error == WritingAnalysisError.emptyInput)
++        }
++    }
++    
++    @Test("Learning plan generation produces valid plan")
++    func learningPlanGenerationWorks() async throws {
++        // Arrange
++        let service = MockWritingAnalysisService()
++        let sampleText = "This is a sample text for testing."
++        let analysis = try await service.analyzeWriting(sampleText)
++        
++        // Act
++        let plan = try await service.generateLearningPlan(from: analysis, timeframe: 2)
++        
++        // Assert
++        #expect(plan.milestones.count == 2)
++        #expect(plan.totalDuration == 2)
++        #expect(!plan.title.isEmpty)
++        #expect(!plan.overview.isEmpty)
++        #expect(plan.targetSkills.count > 0)
++        
++        // Check that milestones match the timeframe
++        for milestone in plan.milestones {
++            #expect(milestone.weekNumber <= plan.totalDuration)
++            #expect(milestone.exercises.count > 0)
++        }
++    }
++    
++    @Test("Item reasoning provides detailed explanation")
++    func itemReasoningProvidesDetails() async throws {
++        // Arrange
++        let service = MockWritingAnalysisService()
++        let sampleText = "This is a sample text for testing."
++        let analysis = try await service.analyzeWriting(sampleText)
++        
++        // Must have at least one suggestion
++        #expect(analysis.improvementSuggestions.count > 0)
++        
++        let suggestion = analysis.improvementSuggestions[0]
++        
++        // Act
++        let reasoning = try await service.exploreItemReasoning(suggestion)
++        
++        // Assert
++        #expect(!reasoning.isEmpty)
++        #expect(reasoning.contains(suggestion.title))
++        #expect(reasoning.contains(suggestion.before))
++        #expect(reasoning.contains(suggestion.after))
++    }
++    
++    // MARK: - Adapter Tests
++    
++    @Test("Adapter correctly transforms analysis to UI model")
++    func adapterTransformsAnalysisToUIModel() async throws {
++        // Arrange
++        let adapter = WritingCoachAdapter(service: MockWritingAnalysisService())
++        adapter.inputText = """
++        The quick brown fox jumps over the lazy dog. This is a sample text for
++        testing our writing analysis service. It contains multiple sentences and
++        should be sufficient for basic analysis testing.
++        """
++        
++        // Act
++        await adapter.analyze(strictness: 0.5)
++        
++        // Assert
++        let result = try #require(adapter.result)
++        #expect(!result.assessment.isEmpty)
++        #expect(result.learningPlan.count > 0)
++        #expect(result.fkGrade > 0)
++        #expect(!result.fkLabel.isEmpty)
++        #expect(!result.methodology.isEmpty)
++    }
++}
++
++// MARK: - Custom Expectations for WritingAnalysisError
++
++extension WritingAnalysisError: Equatable {
++    public static func == (lhs: WritingAnalysisError, rhs: WritingAnalysisError) -> Bool {
++        switch (lhs, rhs) {
++        case (.emptyInput, .emptyInput):
++            return true
++        case (.modelUnavailable, .modelUnavailable):
++            return true
++        case (.invalidResponse(let lmsg), .invalidResponse(let rmsg)):
++            return lmsg == rmsg
++        case (.parsingFailed, .parsingFailed):
++            return true
++        case (.analysisTimeout, .analysisTimeout):
++            return true
++        case (.networkError, .networkError):
++            return true
++        case (.serviceUnavailable(let lmsg), .serviceUnavailable(let rmsg)):
++            return lmsg == rmsg
++        default:
++            return false
++        }
++    }
++}
+\ No newline at end of file
+diff --git a/FoundationWriting/WritingCoachAdapter.swift b/FoundationWriting/WritingCoachAdapter.swift
+new file mode 100644
+index 0000000..27f1f92
+--- /dev/null
++++ b/FoundationWriting/WritingCoachAdapter.swift
+@@ -0,0 +1,200 @@
++//
++//  WritingCoachAdapter.swift
++//  Writing Coach
++//
++//  Created for macOS 26 beta 3 on 2025-07-13
++//
++
++import Foundation
++import SwiftUI
++
++/// Adapter class that bridges between the new WritingAnalysisService protocol
++/// and the existing app architecture
++@MainActor class WritingCoachAdapter: ObservableObject {
++    // MARK: - Published Properties
++    
++    @Published var inputText = ""
++    @Published var result: AnalysisResult?
++    @Published var learningPlan: LearningPlan?
++    @Published var isBusy = false
++    @Published var error: ErrorWrapper?
++    
++    // MARK: - Private Properties
++    
++    private let analysisService: WritingAnalysisService
++    private var analysisOptions: WritingAnalysisOptions
++    
++    // MARK: - Initialization
++    
++    init(service: WritingAnalysisService = MockWritingAnalysisService(),
++         options: WritingAnalysisOptions = .createDefault()) {
++        self.analysisService = service
++        self.analysisOptions = options
++    }
++    
++    // MARK: - Public Methods
++    
++    /// Updates the analysis options
++    /// - Parameter options: The new options to use
++    func updateOptions(_ options: WritingAnalysisOptions) {
++        self.analysisOptions = options
++    }
++    
++    /// Analyzes the current input text with the configured options
++    /// - Parameter strictness: Controls the temperature of the model (lower = stricter)
++    func analyze(strictness: Double) async {
++        guard !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
++        
++        isBusy = true
++        error = nil
++        
++        do {
++            // Update temperature based on strictness parameter
++            var customOptions = analysisOptions
++            customOptions.temperature = max(0.05, 1 - strictness)
++            
++            // Call the writing analysis service
++            let analysis = try await analysisService.analyzeWriting(inputText, options: customOptions)
++            
++            // Calculate Flesch-Kincaid score for the input (using existing implementation)
++            let fk = FKScore(text: inputText)
++            
++            // Map improvement suggestions to learning plan items
++            let plan = analysis.improvementSuggestions.map { suggestion in
++                LearningPlanItem(
++                    title: suggestion.title,
++                    summary: suggestion.description,
++                    before: suggestion.before,
++                    after: suggestion.after,
++                    authors: suggestion.references.map { 
++                        AuthorRef(name: $0.author, work: $0.work) 
++                    }
++                )
++            }
++            
++            // Create the result using the existing AnalysisResult model
++            result = AnalysisResult(
++                fkGrade: fk.grade,
++                fkLabel: fk.description,
++                assessment: analysis.assessment.summary,
++                learningPlan: plan,
++                methodology: "This assessment combines Flesch-Kincaid readability analysis (grade \(fk.grade)) with advanced linguistic analysis using Apple's Foundation Models. Areas assessed include sentence structure, vocabulary usage, coherence, and stylistic elements."
++            )
++            
++        } catch let error as WritingAnalysisError {
++            self.error = ErrorWrapper(error.localizedDescription)
++        } catch {
++            self.error = ErrorWrapper("Analysis failed: \(error.localizedDescription)")
++        }
++        
++        isBusy = false
++    }
++    
++    /// Generates a detailed learning plan based on the current analysis
++    /// - Parameter weeks: The number of weeks for the learning plan
++    func generateDetailedLearningPlan(weeks: Int) async {
++        guard let _ = result else {
++            error = ErrorWrapper("Please analyze your writing first")
++            return
++        }
++        
++        isBusy = true
++        error = nil
++        
++        do {
++            // Get the latest analysis result
++            let analysis = try await analysisService.analyzeWriting(inputText, options: analysisOptions)
++            
++            // Generate a comprehensive learning plan
++            learningPlan = try await analysisService.generateLearningPlan(from: analysis, timeframe: weeks)
++            
++        } catch let error as WritingAnalysisError {
++            self.error = ErrorWrapper(error.localizedDescription)
++        } catch {
++            self.error = ErrorWrapper("Learning plan generation failed: \(error.localizedDescription)")
++        }
++        
++        isBusy = false
++    }
++    
++    /// Gets detailed reasoning for a specific learning plan item
++    /// - Parameter item: The learning plan item to explore
++    /// - Returns: Detailed reasoning for the item
++    func getItemReasoning(for item: LearningPlanItem) async -> String? {
++        isBusy = true
++        
++        // Map from existing model to the new service model
++        let improvementSuggestion = WritingAnalysis.ImprovementSuggestion(
++            title: item.title,
++            area: "Writing Improvement", // default area
++            description: item.summary,
++            before: item.before,
++            after: item.after,
++            priority: 3, // default priority
++            references: item.authors.map { 
++                WritingAnalysis.Reference(
++                    author: $0.name,
++                    work: $0.work,
++                    relevance: "Relevant reference"
++                )
++            },
++            additionalNotes: nil
++        )
++        
++        do {
++            let reasoning = try await analysisService.exploreItemReasoning(improvementSuggestion, 
++                                                                           options: analysisOptions)
++            isBusy = false
++            return reasoning
++        } catch {
++            isBusy = false
++            self.error = ErrorWrapper("Could not generate reasoning: \(error.localizedDescription)")
++            return nil
++        }
++    }
++}
++
++// MARK: - Helper Extension for Flesch-Kincaid
++
++fileprivate struct FKScore {
++    let grade: Double
++    let description: String
++    
++    init(text: String) {
++        let sentences = max(text.split { ".!?".contains($0) }.count, 1)
++        let words     = max(text.split { $0.isWhitespace || $0 == "\n" }.count, 1)
++        let syllables = text.split { $0.isWhitespace || $0 == "\n" }
++            .map { String($0).estimatedSyllableCount }
++            .reduce(0, +)
++        
++        let fk = 0.39 * Double(words) / Double(sentences) + 11.8 * Double(syllables) / Double(words) - 15.59
++        grade = fk.rounded(toPlaces: 1)
++        switch grade {
++        case ..<5:  description = "Elementary"
++        case ..<8:  description = "Intermediate"
++        case ..<12: description = "Advanced"
++        default:    description = "Scholarly"
++        }
++    }
++}
++
++fileprivate extension String {
++    var estimatedSyllableCount: Int {
++        let vowels = CharacterSet(charactersIn: "aeiouyAEIOUY")
++        var count = 0
++        var previousWasVowel = false
++        for scalar in unicodeScalars {
++            let isVowel = vowels.contains(scalar)
++            if isVowel && !previousWasVowel { count += 1 }
++            previousWasVowel = isVowel
++        }
++        return max(count, 1)
++    }
++}
++
++fileprivate extension Double {
++    func rounded(toPlaces places: Int) -> Double {
++        let p = pow(10.0, Double(places))
++        return (self * p).rounded() / p
++    }
++}
+\ No newline at end of file
