@@ -24,15 +24,17 @@ class MockWritingAnalysisService: EnhancedWritingAnalysisService {
         // Generate mock improvement suggestions
         let suggestions = generateMockSuggestions(for: text, options: options)
         
-        // Create mock analysis
         return EnhancedWritingAnalysis(
-            analysis: .init(
-                overallScore: calculateOverallScore(text),
-                strengths: generateStrengths(text),
-                areasForImprovement: generateAreasForImprovement(text),
-                detailedFeedback: [:]
+            metrics: .init(
+                fleschKincaidGrade: calculateOverallScore(text) * 10.0, // Example scaling to a grade
+                fleschKincaidLabel: "Mock Grade",
+                averageSentenceLength: Double(text.split { $0.isWhitespace }.count) / Double(max(text.split { ".!?".contains($0) }.count, 1)),
+                averageWordLength: text.split { $0.isWhitespace }.map { Double($0.count) }.reduce(0, +) / Double(max(text.split { $0.isWhitespace }.count, 1)),
+                vocabularyDiversity: 0.7 // Mock value
             ),
-            suggestions: suggestions,
+            assessment: "This is a mock assessment of your writing.",
+            improvementSuggestions: suggestions,
+            methodology: "Mock analysis methodology.",
             timestamp: Date()
         )
     }
@@ -60,7 +62,7 @@ class MockWritingAnalysisService: EnhancedWritingAnalysisService {
                             description: "Sentence Transformation Exercise",
                             instructions: "Take simple sentences and combine them into more complex structures",
                             expectedOutcome: "More sophisticated writing style",
-                            resources: analysis.suggestions.first?.relatedResources ?? []
+                            resources: analysis.improvementSuggestions.first?.resources ?? []
                         )
                     ]
                 )
@@ -110,11 +112,11 @@ class MockWritingAnalysisService: EnhancedWritingAnalysisService {
                 title: "Enhance Sentence Variety",
                 area: .style,
                 description: "Improve writing by varying sentence structure",
-                before: "The cat sat on the mat. It was warm.",
-                after: "Settling comfortably on the warm mat, the cat basked in the gentle sunlight.",
+                beforeExample: "The cat sat on the mat. It was warm.",
+                afterExample: "Settling comfortably on the warm mat, the cat basked in the gentle sunlight.",
                 priority: 0.7 * complexityFactor,
                 learningEffort: 0.6 * complexityFactor,
-                relatedResources: [
+                resources: [
                     .init(
                         title: "Style: Toward Clarity and Grace", 
                         author: "Joseph M. Williams", 
@@ -154,10 +156,10 @@ class MockWritingAnalysisService: EnhancedWritingAnalysisService {
     private func generateAreasForImprovement(_ text: String) -> [String] {
         var improvements: [String] = []
         
-        let sentenceCount = text.split { ".!?".contains($0) }.count
+        let sentenceCount = text.split(whereSeparator: { ".!?".contains($0) }).count
         if sentenceCount < 3 { improvements.append("Sentence variety") }
         
-        if text.split { $0.isWhitespace }.count < 50 { improvements.append("Depth of content") }
+        if text.split(whereSeparator: { $0.isWhitespace }).count < 50 { improvements.append("Depth of content") }
         
         return improvements.isEmpty ? ["Continue refining writing skills"] : improvements
     }
@@ -170,9 +172,10 @@ class MockWritingAnalysisService: EnhancedWritingAnalysisService {
     }
     
     private func calculateWritingComplexity(_ analysis: EnhancedWritingAnalysis) -> Double {
-        let suggestionComplexity = analysis.suggestions.map { $0.priority }.reduce(0, +)
-        let overallScore = analysis.analysis.overallScore
+        let suggestionComplexity = analysis.improvementSuggestions.map { $0.priority }.reduce(0, +)
+        let overallScore = analysis.metrics.fleschKincaidGrade / 10.0
         
         return (suggestionComplexity + overallScore) / 2.0
     }
 }
+

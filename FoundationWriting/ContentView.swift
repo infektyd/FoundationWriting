@@ -4,7 +4,80 @@
 import SwiftUI
 import Foundation
 import Combine
-import FoundationWriting
+
+// MARK: Ensure conformance to new Observable pattern
+@MainActor
+@Observable
+class FoundationWritingServiceAdapter: FoundationWriting.WritingAnalysisService {
+    private let enhanced: EnhancedWritingAnalysisService = FoundationModelsAnalysisService()
+    // Existing implementation looks good
+    // Ensure methods use async/await correctly
+    func analyzeWriting(_ text: String, options: FoundationWriting.WritingAnalysisOptions) async throws -> FoundationWriting.WritingAnalysis {
+        // Convert legacy to enhanced options (as much as possible)
+        let enhancedOptions = EnhancedWritingAnalysisOptions(
+            analysisMode: .academic,
+            writerLevel: .intermediate, // Or map more accurately
+            improvementFoci: [.grammar, .style, .clarity],
+            temperature: options.temperature,
+            maxTokens: options.maxTokens
+        )
+        let enhancedResult = try await enhanced.analyzeWriting(text, options: enhancedOptions)
+        // Convert enhancedResult to legacy WritingAnalysis. Map only supported fields.
+        let metrics = FoundationWriting.WritingAnalysis.Metrics(
+            fleschKincaidGrade: enhancedResult.metrics.fleschKincaidGrade,
+            fleschKincaidLabel: enhancedResult.metrics.fleschKincaidLabel
+        )
+        let suggestions = enhancedResult.improvementSuggestions.map { s in
+            FoundationWriting.WritingAnalysis.ImprovementSuggestion(
+                title: s.title,
+                summary: s.description,
+                beforeExample: s.beforeExample,
+                afterExample: s.afterExample,
+                resources: s.resources.map { r in
+                    FoundationWriting.WritingAnalysis.ImprovementSuggestion.Resource(
+                        authorName: r.author,
+                        workTitle: r.title,
+                        type: .book // Map type as needed
+                    )
+                }
+            )
+        }
+        return FoundationWriting.WritingAnalysis(
+            metrics: metrics,
+            assessment: enhancedResult.assessment,
+            improvementSuggestions: suggestions,
+            methodology: enhancedResult.methodology
+        )
+    }
+    
+    func exploreItemReasoning(_ item: FoundationWriting.WritingAnalysis.ImprovementSuggestion, options: FoundationWriting.WritingAnalysisOptions) async throws -> String {
+        // Convert to enhanced suggestion
+        let enhancedSuggestion = EnhancedWritingAnalysis.ImprovementSuggestion(
+            title: item.title,
+            area: .style, // Or use a default
+            description: item.summary,
+            beforeExample: item.beforeExample,
+            afterExample: item.afterExample,
+            priority: 0.5,
+            learningEffort: 0.5,
+            resources: item.resources.map { r in
+                EnhancedWritingAnalysis.ResourceReference(
+                    title: r.workTitle,
+                    author: r.authorName,
+                    type: .book,
+                    relevanceScore: 1.0
+                )
+            },
+            contextualInsights: [:]
+        )
+        // Enhanced API may expect a context dictionary
+        let result = try await enhanced.exploreContextualReasoning(enhancedSuggestion, context: [:])
+        // Return a formatted string (combine key points)
+        return ["Principles:" + result.linguisticPrinciples.joined(separator: ", "),
+                "Cognitive: " + result.cognitiveInsights.joined(separator: ", "),
+                "Applications: " + result.practicalApplications.joined(separator: ", ")].joined(separator: "\n")
+    }
+}
 
 // BETA-WORKAROUND: All FoundationWriting types fully qualified to avoid ambiguity (Xcode 26 beta 3)
 
@@ -54,57 +127,59 @@ fileprivate extension Double {
     }
 }
 
-// MARK: Design System
+// MARK: UI Design System
 
 struct UIDesignSystem {
     static let cornerRadius: CGFloat = 16
     static let shadowOpacity: Double = 0.06
     static let blurRadius: CGFloat = 0.5
     
+    // Use new color API with higher opacity for better contrast in middle pane
     static func backgroundGradient() -> LinearGradient {
         LinearGradient(
             colors: [
-                Color(NSColor.windowBackgroundColor).opacity(0.5),
-                Color(NSColor.controlBackgroundColor).opacity(0.4),
-                Color.blue.opacity(0.1)
+                Color(.windowBackgroundColor).opacity(0.85), // increased opacity
+                Color(.controlBackgroundColor).opacity(0.75), // increased opacity
+                Color.blue.opacity(0.14) // slight increase
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
     }
-    
+    // Ensure view modifiers use new syntax
     static func glassOverlay() -> some View {
         RoundedRectangle(cornerRadius: cornerRadius)
-            .fill(
-                LinearGradient(
-                    colors: [
-                        Color.white.opacity(0.2),
-                        Color.blue.opacity(0.1),
-                        Color.clear
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-            .blur(radius: blurRadius)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius)) // Use .clipShape instead of .cornerRadius
     }
 }
 
 // MARK: Reusable Glassmorphic Background
 
+// Update to use new SwiftUI modifiers and allow optional strong background overlay for text-heavy panes
 struct GlassmorphicBackground: ViewModifier {
+    var strongBackground: Bool = false // default false
+    
     func body(content: Content) -> some View {
         content
             .background(
                 ZStack {
+                    // Use new color and shape APIs
                     RoundedRectangle(cornerRadius: UIDesignSystem.cornerRadius)
                         .fill(UIDesignSystem.backgroundGradient())
-                        .blur(radius: UIDesignSystem.blurRadius)
+                        .blur(radius: 2.0) // increased blur
+                    
+                    if strongBackground {
+                        // TODO: Add solid background behind content for improved readability in text-heavy panes
+                        Color(.textBackgroundColor)
+                            .opacity(0.80)
+                            .clipShape(RoundedRectangle(cornerRadius: UIDesignSystem.cornerRadius))
+                    }
                     
                     UIDesignSystem.glassOverlay()
                 }
             )
             .overlay(
+                // Ensure modern shape and gradient usage
                 RoundedRectangle(cornerRadius: UIDesignSystem.cornerRadius)
                     .stroke(
                         LinearGradient(
@@ -119,15 +194,18 @@ struct GlassmorphicBackground: ViewModifier {
                         lineWidth: 1
                     )
             )
-            .shadow(color: .black.opacity(UIDesignSystem.shadowOpacity), 
+            .shadow(color: .black.opacity(0.12), // increased shadow opacity
                     radius: 15, x: 0, y: 6)
             .clipShape(RoundedRectangle(cornerRadius: UIDesignSystem.cornerRadius))
     }
 }
 
 extension View {
-    func glassmorphicStyle() -> some View {
-        self.modifier(GlassmorphicBackground())
+    /// Glassmorphic style modifier with optional strong background overlay for better text contrast.
+    /// - Parameter strongBackground: When true, adds a semi-opaque solid background behind content.
+    /// - Returns: A view with glassmorphic styling applied.
+    func glassmorphicStyle(strongBackground: Bool = false) -> some View {
+        self.modifier(GlassmorphicBackground(strongBackground: strongBackground))
     }
 }
 
@@ -144,6 +222,7 @@ struct ErrorWrapper: Identifiable {
 
 // MARK: LegacyResponse struct moved outside the extension to avoid nesting in an extension
 
+// Ensure encoding compatibility
 fileprivate struct LegacyResponse: Encodable {
     let writingLevelAssessment: String
     
@@ -170,68 +249,72 @@ fileprivate struct LegacyResponse: Encodable {
 // Use fully qualified type names from FoundationWriting module
 
 // For backward compatibility with existing code
+// Ensure async/await and modern error handling
 extension FoundationWriting.WritingAnalysisService {
     func generateResponse(prompt: String, temperature: Double, maxTokens: Int) async throws -> String {
-        // This is a compatibility method that wraps the new protocol to support legacy code
-        // It extracts a sample text from the prompt and converts the analysis to JSON
-        
-        // Extract writing sample from the prompt
-        let sampleStartMarker = "Writing sample to analyze:"
-        let sampleEndMarker = "Provide concrete before/after examples"
-        
-        guard let sampleStartRange = prompt.range(of: sampleStartMarker),
-              let sampleEndRange = prompt.range(of: sampleEndMarker) else {
-            throw FoundationWriting.WritingAnalysisError.responseParsingFailure("Could not extract writing sample from prompt")
-        }
-        
-        let sampleStartIndex = prompt.index(sampleStartRange.upperBound, offsetBy: 1)
-        let sampleEndIndex = sampleEndRange.lowerBound
-        
-        guard sampleStartIndex < sampleEndIndex else {
-            throw FoundationWriting.WritingAnalysisError.responseParsingFailure("Invalid sample extraction range")
-        }
-        
-        let sample = prompt[sampleStartIndex..<sampleEndIndex].trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        // Create analysis options
-        let options = FoundationWriting.WritingAnalysisOptions(
-            temperature: temperature,
-            strictness: 0.5,
-            maxTokens: maxTokens,
-            targetStyle: nil
-        )
-        
-        // Perform analysis using the new protocol
-        let analysis = try await analyzeWriting(sample, options: options)
-        
-        // Convert to legacy JSON format
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted]
-        
-        // Convert from new model to legacy model
-        let legacyPlan = analysis.improvementSuggestions.map { item in
-            LegacyResponse.LegacyPlanItem(
-                title: item.title,
-                summary: item.summary,
-                before: item.beforeExample,
-                after: item.afterExample,
-                authors: item.resources.map { resource in
-                    LegacyResponse.LegacyPlanItem.LegacyAuthor(
-                        name: resource.authorName,
-                        work: resource.workTitle
-                    )
-                }
+        // Defensive programming with availability check
+        if #available(macOS 26.0, *) {
+            // Extract writing sample from the prompt
+            let sampleStartMarker = "Writing sample to analyze:"
+            let sampleEndMarker = "Provide concrete before/after examples"
+            
+            guard let sampleStartRange = prompt.range(of: sampleStartMarker),
+                  let sampleEndRange = prompt.range(of: sampleEndMarker) else {
+                throw FoundationWriting.WritingAnalysisError.responseParsingFailure("Could not extract writing sample from prompt")
+            }
+            
+            let sampleStartIndex = prompt.index(sampleStartRange.upperBound, offsetBy: 1)
+            let sampleEndIndex = sampleEndRange.lowerBound
+            
+            guard sampleStartIndex < sampleEndIndex else {
+                throw FoundationWriting.WritingAnalysisError.responseParsingFailure("Invalid sample extraction range")
+            }
+            
+            let sample = prompt[sampleStartIndex..<sampleEndIndex].trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            // Create analysis options
+            let options = FoundationWriting.WritingAnalysisOptions(
+                temperature: temperature,
+                strictness: 0.5,
+                maxTokens: maxTokens,
+                targetStyle: nil
             )
+            
+            // Perform analysis using the new protocol
+            let analysis = try await analyzeWriting(sample, options: options)
+            
+            // Convert to legacy JSON format
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted]
+            
+            // Convert from new model to legacy model
+            let legacyPlan = analysis.improvementSuggestions.map { item in
+                LegacyResponse.LegacyPlanItem(
+                    title: item.title,
+                    summary: item.summary,
+                    before: item.beforeExample,
+                    after: item.afterExample,
+                    authors: item.resources.map { resource in
+                        LegacyResponse.LegacyPlanItem.LegacyAuthor(
+                            name: resource.authorName,
+                            work: resource.workTitle
+                        )
+                    }
+                )
+            }
+            
+            let legacyResponse = LegacyResponse(
+                writingLevelAssessment: analysis.assessment,
+                learningPlan: legacyPlan,
+                methodology: analysis.methodology
+            )
+            
+            let data = try encoder.encode(legacyResponse)
+            return String(data: data, encoding: .utf8) ?? "{}"
+        } else {
+            // Fallback mechanism
+            throw WritingAnalysisError.modelUnavailable
         }
-        
-        let legacyResponse = LegacyResponse(
-            writingLevelAssessment: analysis.assessment,
-            learningPlan: legacyPlan,
-            methodology: analysis.methodology
-        )
-        
-        let data = try encoder.encode(legacyResponse)
-        return String(data: data, encoding: .utf8) ?? "{}"
     }
 }
 
@@ -266,49 +349,56 @@ struct LearningPlanItem: Identifiable {
 struct AnalysisResult: Identifiable {
     let id = UUID()
     let fkGrade: Double
-    let fkLabel: String
-    let assessment: String
+    let fkLabel, assessment, methodology: String
     let learningPlan: [LearningPlanItem]
-    let methodology: String
 }
 
 // MARK: Main ViewModel
 
-@MainActor final class CoachVM: ObservableObject {
+@MainActor
+final class CoachVM: ObservableObject {
     @Published var inputText = ""
     @Published var result: AnalysisResult?
     @Published var isBusy = false
     @Published var error: ErrorWrapper?
     
-    // Writing analysis service - easily swappable between mock and real implementation
+    // Private service with protocol abstraction
     private let analysisService: FoundationWriting.WritingAnalysisService
     
-    init(analysisService: FoundationWriting.WritingAnalysisService = FoundationWriting.MockWritingAnalysisService()) {
+    init(analysisService: FoundationWriting.WritingAnalysisService) {
         self.analysisService = analysisService
     }
     
-    // Alternative initializer with real implementation when ready
+    // Alternative initializers using defensive programming
     static func withFoundationModels() -> CoachVM {
-        CoachVM(analysisService: FoundationWriting.FoundationModelsAnalysisService())
+        // Defensive initialization
+        if #available(macOS 26.0, *) {
+            return CoachVM(analysisService: FoundationWritingServiceAdapter())
+        } else {
+            return CoachVM.initiate()
+        }
     }
 
+    static func initiate() -> CoachVM {
+        CoachVM(analysisService: FoundationWritingServiceAdapter())
+    }
+
+    // Async method with modern error handling
     func analyze(strictness: Double) async {
         guard !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        isBusy = true; error = nil
+        isBusy = true
+        error = nil
         
         do {
-            // Create options for analysis
             let options = FoundationWriting.WritingAnalysisOptions(
                 temperature: max(0.05, 1 - strictness),
                 strictness: strictness,
                 maxTokens: 2048
             )
             
-            // Use the new protocol to analyze writing
             let analysis = try await analysisService.analyzeWriting(inputText, options: options)
             
-            // Convert to legacy result format for UI compatibility
-            // (We'll gradually migrate the UI to use WritingAnalysis directly)
+            // Convert to UI model
             let plan = analysis.improvementSuggestions.map { suggestion in
                 LearningPlanItem(
                     title: suggestion.title,
@@ -321,13 +411,12 @@ struct AnalysisResult: Identifiable {
                 )
             }
             
-            // Create the final result using our existing UI model
             result = AnalysisResult(
                 fkGrade: analysis.metrics.fleschKincaidGrade,
                 fkLabel: analysis.metrics.fleschKincaidLabel,
                 assessment: analysis.assessment,
-                learningPlan: plan,
-                methodology: analysis.methodology
+                methodology: analysis.methodology,
+                learningPlan: plan
             )
             
         } catch let analysisError as FoundationWriting.WritingAnalysisError {
@@ -339,15 +428,14 @@ struct AnalysisResult: Identifiable {
         isBusy = false
     }
     
-    // Add a new method to get detailed reasoning for a learning plan item
+    // Add detailed reasoning method with error handling
     func getDetailedReasoning(for item: LearningPlanItem) async -> String? {
         do {
-            // Convert from our UI model to the new model
             let resources = item.authors.map { author in
                 FoundationWriting.WritingAnalysis.ImprovementSuggestion.Resource(
                     authorName: author.name,
                     workTitle: author.work,
-                    type: FoundationWriting.WritingAnalysis.ImprovementSuggestion.Resource.ResourceType.book
+                    type: .book
                 )
             }
             
@@ -359,38 +447,162 @@ struct AnalysisResult: Identifiable {
                 resources: resources
             )
             
-            // Use service to get detailed reasoning
             return try await analysisService.exploreItemReasoning(
                 suggestion,
                 options: FoundationWriting.WritingAnalysisOptions(temperature: 0.7)
             )
         } catch {
-            // Just return nil for now - we could handle this better in the future
+            // Graceful error handling
             return nil
         }
     }
 }
 
-// MARK: Main View
+// MARK: - New LLM Chat ViewModel and Service
+
+/// Mock LLM Service for generating responses.
+/// TODO: Replace with real LLM API integration when stable.
+class LLMService {
+    func generateResponse(_ input: String) async throws -> String {
+        // Simulate network or processing delay
+        try await Task.sleep(nanoseconds: 700_000_000) // 0.7 seconds
+        
+        // TODO: Replace mock response with actual API call
+        return "Echo: \(input)"
+    }
+}
+
+/// ViewModel managing chat interaction with the LLM.
+/// Uses a simple array of strings for messages and input text.
+@MainActor
+final class LLMChatVM: ObservableObject {
+    var messages: [String] = []
+    var input: String = ""
+    var isBusy = false
+    
+    private let service: LLMService
+    
+    init(service: LLMService = LLMService()) {
+        self.service = service
+    }
+    
+    /// Sends the current input message and fetches a reply.
+    /// Handles errors gracefully.
+    func sendMessage() async {
+        let trimmedInput = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedInput.isEmpty else { return }
+        
+        isBusy = true
+        
+        // Append user message
+        messages.append("You: \(trimmedInput)")
+        input = ""
+        
+        do {
+            // Fetch reply from service
+            let reply = try await service.generateResponse(trimmedInput)
+            messages.append("Foundation Model: \(reply)")
+        } catch {
+            messages.append("Error: \(error.localizedDescription)")
+        }
+        
+        isBusy = false
+    }
+}
+
+// MARK: - LLM Chat View
+
+/// A SwiftUI view providing a chat interface to interact with the Foundation LLM.
+/// Styled to match other panes with a strong glassmorphic background.
+struct LLMChatPane: View {
+    @StateObject private var vm = LLMChatVM()
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(Array(vm.messages.enumerated()), id: \.offset) { _, message in
+                            Text(message)
+                                .font(.body)
+                                .foregroundColor(message.hasPrefix("You:") ? .primary : (message.hasPrefix("Error:") ? .red : .blue))
+                                .frame(maxWidth: .infinity, alignment: message.hasPrefix("You:") ? .trailing : .leading)
+                                .padding(6)
+                                .background(message.hasPrefix("You:") ? Color.blue.opacity(0.15) : Color.gray.opacity(0.15))
+                                .cornerRadius(8)
+                                .id(message)
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 8)
+                }
+                .onChange(of: vm.messages.count) {
+                    if let last = vm.messages.last {
+                        withAnimation {
+                            proxy.scrollTo(last, anchor: .bottom)
+                        }
+                    }
+                }
+            }
+            
+            Divider()
+            
+            // Input area with text editor and send button
+            HStack {
+                TextEditor(text: $vm.input)
+                    .frame(minHeight: 36, maxHeight: 100)
+                    .font(.system(.body, design: .monospaced))
+                    .scrollContentBackground(.hidden)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color(.separatorColor), lineWidth: 1)
+                    )
+                
+                Button(action: {
+                    Task { await vm.sendMessage() }
+                }) {
+                    if vm.isBusy {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle())
+                            .frame(width: 32, height: 32)
+                    } else {
+                        Image(systemName: "paperplane.fill")
+                            .font(.title3)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(vm.isBusy || vm.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding([.horizontal, .bottom], 8)
+        }
+        .glassmorphicStyle(strongBackground: true)
+        .frame(minWidth: 340, idealWidth: 400, maxWidth: 450)
+    }
+}
+
+// MARK: Updated ContentView with three-column layout including LLMChatPane
 
 struct ContentView: View {
-    @StateObject private var vm = CoachVM()
-
+    /// Initialize CoachVM eagerly for main-actor safety
+    @StateObject private var vm = CoachVM.initiate()
+    
     var body: some View {
         HStack(spacing: 0) {
             // LEFT - Input sidebar with fixed width constraints
-            SidebarControls(text: $vm.inputText, isBusy: vm.isBusy) {
-                vm.analyze(strictness: 0.5)
-            }
+            SidebarControls(text: Binding(
+                get: { vm.inputText },
+                set: { vm.inputText = $0 }
+            ), isBusy: vm.isBusy, vm: vm)
             .frame(minWidth: 300, idealWidth: 340, maxWidth: 400)
-
+            
             Divider()
-
-            // RIGHT - Analysis results taking remaining space
+            
+            // CENTER - Analysis results taking remaining space
             if let res = vm.result {
-                AnalysisPane(result: res)
+                AnalysisPane(result: res, vm: vm)
                     .layoutPriority(1)  // Ensures this view gets remaining width
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .glassmorphicStyle(strongBackground: true)
             } else {
                 // Placeholder when no analysis has been done yet
                 VStack {
@@ -402,7 +614,14 @@ struct ContentView: View {
                         .foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .glassmorphicStyle(strongBackground: true)
             }
+            
+            Divider()
+            
+            // RIGHT - LLM Chat Pane for interactive chat with Foundation Model
+            LLMChatPane()
+                .frame(minWidth: 340, idealWidth: 400, maxWidth: 450)
         }
         .alert(item: $vm.error) { (errorWrapper: ErrorWrapper) in
             Alert(
@@ -419,7 +638,7 @@ struct ContentView: View {
 struct SidebarControls: View {
     @Binding var text: String
     let isBusy: Bool
-    let onAnalyze: () -> Void
+    let vm: CoachVM  // Non-optional now
     
     var body: some View {
         VStack(spacing: 16) {
@@ -436,7 +655,11 @@ struct SidebarControls: View {
                     )
             }
             
-            Button(action: onAnalyze) {
+            Button(action: {
+                Task { @MainActor in
+                    await vm.analyze(strictness: 0.5)
+                }
+            }) {
                 HStack {
                     if isBusy {
                         ProgressView()
@@ -459,6 +682,7 @@ struct SidebarControls: View {
 
 struct AnalysisPane: View {
     let result: AnalysisResult
+    let vm: CoachVM
     
     var body: some View {
         ScrollView {
@@ -483,7 +707,7 @@ struct AnalysisPane: View {
                 // Learning Plan
                 SectionHeader("📚 Personalized Learning Plan")
                 ForEach(result.learningPlan) { item in
-                    LearningCard(item: item)
+                    LearningCard(item: item, vm: vm)
                 }
 
                 // Methodology
@@ -493,7 +717,6 @@ struct AnalysisPane: View {
             }
             .padding()
         }
-        .glassmorphicStyle()
     }
 }
 
@@ -506,9 +729,17 @@ struct SectionHeader: View {
             .foregroundColor(.primary)
     }
 }
+
 struct LearningCard: View {
-    @StateObject private var detailVM = DetailViewModel()
     let item: LearningPlanItem
+    let vm: CoachVM
+    @StateObject private var detailVM: DetailViewModel
+    
+    init(item: LearningPlanItem, vm: CoachVM) {
+        self.item = item
+        self.vm = vm
+        _detailVM = StateObject(wrappedValue: DetailViewModel(vm: vm))
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -623,11 +854,7 @@ struct LearningCard: View {
                                 .font(.subheadline)
                                 .lineSpacing(1.3)
                         } else {
-                            Button(action: {
-                                Task { 
-                                    await detailVM.loadDetailedReasoning(for: item) 
-                                }
-                            }) {
+                            Button(action: loadDetailAsync) {
                                 HStack {
                                     Spacer()
                                     Label("Load Detailed Explanation", systemImage: "lightbulb.fill")
@@ -652,13 +879,23 @@ struct LearningCard: View {
             removal: .scale.combined(with: .opacity)
         ))
     }
+    
+    private func loadDetailAsync() {
+        Task { await detailVM.loadDetailedReasoning(for: item) }
+    }
 }
 
 // ViewModel for managing the detailed reasoning state of a learning card
 class DetailViewModel: ObservableObject {
-    @Published var isExpanded = false
-    @Published var isLoading = false
-    @Published var detailedReasoning: String?
+    var isExpanded = false
+    var isLoading = false
+    var detailedReasoning: String?
+    
+    private(set) var vm: CoachVM
+    
+    init(vm: CoachVM) {
+        self.vm = vm
+    }
     
     func toggleExpanded() {
         withAnimation {
@@ -669,32 +906,21 @@ class DetailViewModel: ObservableObject {
     func loadDetailedReasoning(for item: LearningPlanItem) async {
         guard detailedReasoning == nil && !isLoading else { return }
         
-        // Update UI state
         await MainActor.run {
             isLoading = true
         }
         
-        // Access the shared ViewModel to get the detailed reasoning
-        if let vm = findViewModel(),
-           let reasoning = await vm.getDetailedReasoning(for: item) {
+        if let reasoning = await vm.getDetailedReasoning(for: item) {
             await MainActor.run {
-                self.detailedReasoning = reasoning
-                self.isLoading = false
+                detailedReasoning = reasoning
+                isLoading = false
             }
         } else {
-            // Fallback if the service isn't available
             await MainActor.run {
-                self.detailedReasoning = "Unable to load detailed reasoning at this time."
-                self.isLoading = false
+                detailedReasoning = "Unable to load detailed reasoning at this time."
+                isLoading = false
             }
         }
-    }
-    
-    // Helper to find the CoachVM in the environment
-    private func findViewModel() -> CoachVM? {
-        // This is a simple implementation for demo purposes
-        // In a real app, you might use a more robust dependency injection approach
-        return (NSApplication.shared.windows.first?.contentViewController as? NSHostingController<ContentView>)?.rootView.vm
     }
 }
 

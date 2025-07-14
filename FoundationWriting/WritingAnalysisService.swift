@@ -1,3 +1,5 @@
+@_exported import Foundation
+
 // WritingAnalysisService.swift - Protocol and minimal stub implementations for Writing Coach
 // Created because ContentView.swift depends on these types
 
@@ -19,13 +21,30 @@ public struct WritingAnalysisOptions {
 }
 
 public enum WritingAnalysisError: Error, LocalizedError {
+    case emptyInput
+    case tokenLimitExceeded
+    case networkError(Error)
+    case modelUnavailable
+    case invalidResponse(String)
     case responseParsingFailure(String)
     case other(String)
     
     public var errorDescription: String? {
         switch self {
-        case .responseParsingFailure(let msg): return "Parsing failure: \(msg)"
-        case .other(let msg): return msg
+        case .emptyInput:
+            return "No text provided for analysis"
+        case .tokenLimitExceeded:
+            return "Text exceeds maximum token limit"
+        case .networkError(let error):
+            return "Network error: \(error.localizedDescription)"
+        case .modelUnavailable:
+            return "Analysis model is currently unavailable"
+        case .invalidResponse(let details):
+            return "Invalid response received: \(details)"
+        case .responseParsingFailure(let details):
+            return "Failed to parse response: \(details)"
+        case .other(let message):
+            return message
         }
     }
 }
@@ -83,42 +102,3 @@ public struct WritingAnalysis {
     }
 }
 
-// MARK: - Mock Implementation
-
-public class MockWritingAnalysisService: WritingAnalysisService {
-    public init() {}
-    public func analyzeWriting(_ text: String, options: WritingAnalysisOptions) async throws -> WritingAnalysis {
-        // Return a stub analysis
-        let suggestion = WritingAnalysis.ImprovementSuggestion(
-            title: "Be Clear",
-            summary: "Use clear, concise language.",
-            beforeExample: "This is a test of the emergency broadcast system.",
-            afterExample: "This is a drill.",
-            resources: [
-                .init(authorName: "Strunk & White", workTitle: "The Elements of Style", type: .book)
-            ]
-        )
-        return WritingAnalysis(
-            metrics: .init(fleschKincaidGrade: 8.0, fleschKincaidLabel: "Intermediate"),
-            assessment: "Writing is clear but could be more concise.",
-            improvementSuggestions: [suggestion],
-            methodology: "Flesch-Kincaid readability and style analysis."
-        )
-    }
-    public func exploreItemReasoning(_ item: WritingAnalysis.ImprovementSuggestion, options: WritingAnalysisOptions) async throws -> String {
-        return "Clear writing helps your reader understand your ideas. For example: ..."
-    }
-}
-
-// MARK: - Foundation Implementation (Stub)
-
-public class FoundationModelsAnalysisService: WritingAnalysisService {
-    public init() {}
-    public func analyzeWriting(_ text: String, options: WritingAnalysisOptions) async throws -> WritingAnalysis {
-        // Just call mock for now
-        return try await MockWritingAnalysisService().analyzeWriting(text, options: options)
-    }
-    public func exploreItemReasoning(_ item: WritingAnalysis.ImprovementSuggestion, options: WritingAnalysisOptions) async throws -> String {
-        return try await MockWritingAnalysisService().exploreItemReasoning(item, options: options)
-    }
-}

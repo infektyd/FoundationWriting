@@ -6,32 +6,53 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXContainerItemProxy section */
-		A3C9BA012E23E08E0090764B /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = A3C9B9E92E23E08D0090764B /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = A3C9B9F02E23E08D0090764B;
-			remoteInfo = FoundationWriting;
+/* Begin PBXBuildFile section */
+		A3A698E42E24847C00136E2D /* FoundationModels.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A3A698E32E24847C00136E2D /* FoundationModels.framework */; };
+		A3A698E62E24848700136E2D /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A3A698E52E24848700136E2D /* Foundation.framework */; };
+		A3A698EC2E24849F00136E2D /* Combine.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A3A698EB2E24849F00136E2D /* Combine.framework */; };
+		A3A698EE2E2484A700136E2D /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A3A698ED2E2484A700136E2D /* SwiftUI.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A3A698EA2E24849200136E2D /* Embed PlugIns */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+			);
+			name = "Embed PlugIns";
+			runOnlyForDeploymentPostprocessing = 0;
 		};
-		A3C9BA0B2E23E08E0090764B /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = A3C9B9E92E23E08D0090764B /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = A3C9B9F02E23E08D0090764B;
-			remoteInfo = FoundationWriting;
-		};
-/* End PBXContainerItemProxy section */
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		A3A698E32E24847C00136E2D /* FoundationModels.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FoundationModels.framework; path = System/Library/Frameworks/FoundationModels.framework; sourceTree = SDKROOT; };
+		A3A698E52E24848700136E2D /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
+		A3A698EB2E24849F00136E2D /* Combine.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Combine.framework; path = System/Library/Frameworks/Combine.framework; sourceTree = SDKROOT; };
+		A3A698ED2E2484A700136E2D /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		A3A698EF2E24897E00136E2D /* _Testing_Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = _Testing_Foundation.framework; path = Platforms/MacOSX.platform/Developer/Library/Frameworks/_Testing_Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		A3C9B9F12E23E08D0090764B /* FoundationWriting.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FoundationWriting.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A3C9BA002E23E08E0090764B /* FoundationWritingTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FoundationWritingTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A3C9BA0A2E23E08E0090764B /* FoundationWritingUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FoundationWritingUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		A3A698FA2E24A0D000136E2D /* Exceptions for "FoundationWriting" folder in "FoundationWriting" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Assets.xcassets,
+			);
+			target = A3C9B9F02E23E08D0090764B /* FoundationWriting */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A3C9B9F32E23E08D0090764B /* FoundationWriting */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A3A698FA2E24A0D000136E2D /* Exceptions for "FoundationWriting" folder in "FoundationWriting" target */,
+			);
 			path = FoundationWriting;
 			sourceTree = "<group>";
 		};
@@ -52,6 +73,10 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A3A698EE2E2484A700136E2D /* SwiftUI.framework in Frameworks */,
+				A3A698E42E24847C00136E2D /* FoundationModels.framework in Frameworks */,
+				A3A698EC2E24849F00136E2D /* Combine.framework in Frameworks */,
+				A3A698E62E24848700136E2D /* Foundation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -72,12 +97,25 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		A3A698E22E24847C00136E2D /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				A3A698EF2E24897E00136E2D /* _Testing_Foundation.framework */,
+				A3A698ED2E2484A700136E2D /* SwiftUI.framework */,
+				A3A698EB2E24849F00136E2D /* Combine.framework */,
+				A3A698E52E24848700136E2D /* Foundation.framework */,
+				A3A698E32E24847C00136E2D /* FoundationModels.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		A3C9B9E82E23E08D0090764B = {
 			isa = PBXGroup;
 			children = (
 				A3C9B9F32E23E08D0090764B /* FoundationWriting */,
 				A3C9BA032E23E08E0090764B /* FoundationWritingTests */,
 				A3C9BA0D2E23E08E0090764B /* FoundationWritingUITests */,
+				A3A698E22E24847C00136E2D /* Frameworks */,
 				A3C9B9F22E23E08D0090764B /* Products */,
 			);
 			sourceTree = "<group>";
@@ -102,6 +140,7 @@
 				A3C9B9ED2E23E08D0090764B /* Sources */,
 				A3C9B9EE2E23E08D0090764B /* Frameworks */,
 				A3C9B9EF2E23E08D0090764B /* Resources */,
+				A3A698EA2E24849200136E2D /* Embed PlugIns */,
 			);
 			buildRules = (
 			);
@@ -128,7 +167,6 @@
 			buildRules = (
 			);
 			dependencies = (
-				A3C9BA022E23E08E0090764B /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				A3C9BA032E23E08E0090764B /* FoundationWritingTests */,
@@ -151,7 +189,6 @@
 			buildRules = (
 			);
 			dependencies = (
-				A3C9BA0C2E23E08E0090764B /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				A3C9BA0D2E23E08E0090764B /* FoundationWritingUITests */,
@@ -254,19 +291,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin PBXTargetDependency section */
-		A3C9BA022E23E08E0090764B /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = A3C9B9F02E23E08D0090764B /* FoundationWriting */;
-			targetProxy = A3C9BA012E23E08E0090764B /* PBXContainerItemProxy */;
-		};
-		A3C9BA0C2E23E08E0090764B /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = A3C9B9F02E23E08D0090764B /* FoundationWriting */;
-			targetProxy = A3C9BA0B2E23E08E0090764B /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		A3C9BA122E23E08E0090764B /* Debug */ = {
@@ -403,6 +427,8 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = FoundationWriting;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -435,6 +461,8 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = FoundationWriting;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
