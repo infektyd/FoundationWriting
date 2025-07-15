@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 
 /// Mock implementation of WritingAnalysisService for development and testing
-class MockWritingAnalysisService: EnhancedWritingAnalysisService {
+class MockWritingAnalysisService: EnhancedWritingAnalysisService, WritingAnalysisService {
     /// Simulates network delay and analysis generation
     private func simulateDelay() async throws {
         try await Task.sleep(for: .seconds(Double.random(in: 0.5...2.0)))
@@ -177,5 +177,43 @@ class MockWritingAnalysisService: EnhancedWritingAnalysisService {
         
         return (suggestionComplexity + overallScore) / 2.0
     }
+    
+    
+    // MARK: - WritingAnalysisService Conformance
+    func analyzeWriting(_ text: String, options: WritingAnalysisOptions) async throws -> WritingAnalysis {
+        let enhancedOptions = EnhancedWritingAnalysisOptions(
+            analysisMode: .academic,
+            writerLevel: .intermediate,
+            improvementFoci: [.style],
+            temperature: options.temperature, 
+            maxTokens: options.maxTokens
+        )
+        let enhanced = try await self.analyzeWriting(text, options: enhancedOptions)
+        return WritingAnalysis(
+            metrics: WritingAnalysis.Metrics(
+                fleschKincaidGrade: enhanced.metrics.fleschKincaidGrade,
+                fleschKincaidLabel: enhanced.metrics.fleschKincaidLabel
+            ),
+            assessment: enhanced.assessment,
+            improvementSuggestions: enhanced.improvementSuggestions.map {
+                WritingAnalysis.ImprovementSuggestion(
+                    title: $0.title,
+                    summary: $0.description,
+                    beforeExample: $0.beforeExample,
+                    afterExample: $0.afterExample,
+                    resources: $0.resources.map { res in
+                        WritingAnalysis.ImprovementSuggestion.Resource(
+                            authorName: res.author,
+                            workTitle: res.title,
+                            type: .book
+                        )
+                    }
+                )
+            },
+            methodology: enhanced.methodology
+        )
+    }
+    func exploreItemReasoning(_ item: WritingAnalysis.ImprovementSuggestion, options: WritingAnalysisOptions) async throws -> String {
+        return "Mock detailed reasoning for \(item.title): This suggestion will improve the clarity and readability of your text."
+    }
 }
-

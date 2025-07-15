@@ -5,7 +5,7 @@ import SwiftUI
 struct WritingCoachApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView() // This should now correctly reference the ContentView you defined or imported
         }
     }
 }

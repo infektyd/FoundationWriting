@@ -1,7 +1,7 @@
 import SwiftUI
 import Foundation
 import Combine
-import CryptoKit  // Add this import for MD5 hashing
+import CryptoKit
 
 // MARK: - Performance Optimization Utilities
 
