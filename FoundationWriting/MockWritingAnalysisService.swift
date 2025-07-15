@@ -5,7 +5,8 @@ import SwiftUI
 class MockWritingAnalysisService: EnhancedWritingAnalysisService, WritingAnalysisService {
     /// Simulates network delay and analysis generation
     private func simulateDelay() async throws {
-        try await Task.sleep(for: .seconds(Double.random(in: 0.5...2.0)))
+        let delayNanoseconds = UInt64(Double.random(in: 0.5...2.0) * 1_000_000_000)
+        try await Task.sleep(nanoseconds: delayNanoseconds)
     }
     
     /// Analyze writing with mock implementation
@@ -69,15 +70,15 @@ class MockWritingAnalysisService: EnhancedWritingAnalysisService, WritingAnalysi
             ],
             totalDuration: Double(timeframe * 3600),
             personalizedInsights: [
-                "writing_complexity": calculateWritingComplexity(analysis)
+                "writing_complexity": String(describing: calculateWritingComplexity(analysis))
             ]
         )
     }
     
     /// Provide deep contextual reasoning for a suggestion
     func exploreContextualReasoning(
-        _ suggestion: EnhancedWritingAnalysis.ImprovementSuggestion, 
-        context: [String : Any]
+        _ suggestion: EnhancedWritingAnalysis.ImprovementSuggestion,
+        context: [String : String]
     ) async throws -> ContextualReasoning {
         // Simulate network delay
         try await simulateDelay()
@@ -125,7 +126,7 @@ class MockWritingAnalysisService: EnhancedWritingAnalysisService, WritingAnalysi
                     )
                 ],
                 contextualInsights: [
-                    "sentence_complexity": calculateSentenceComplexity(text)
+                    "sentence_complexity": String(calculateSentenceComplexity(text))
                 ]
             )
         ]

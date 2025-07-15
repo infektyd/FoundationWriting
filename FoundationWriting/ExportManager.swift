@@ -8,6 +8,8 @@ import Foundation
 import AppKit
 import PDFKit
 import SwiftUI
+import Combine
+import UniformTypeIdentifiers
 
 /// Manages export functionality for writing analysis reports
 @MainActor

@@ -7,6 +7,7 @@
 import Foundation
 import SwiftUI
 import AppKit
+import Combine
 
 /// Manages accessibility features and compliance for the Writing Coach app
 @MainActor
@@ -201,7 +202,9 @@ class AccessibilityManager: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.updateSystemAccessibilityState()
+            Task { @MainActor in
+                await self?.updateSystemAccessibilityState()
+            }
         }
         
         // Observe reduced motion preference changes
@@ -210,7 +213,9 @@ class AccessibilityManager: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.updateSystemAccessibilityState()
+            Task { @MainActor in
+                await self?.updateSystemAccessibilityState()
+            }
         }
     }
     

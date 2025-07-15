@@ -6,4 +6,12 @@
 //
 
 import SwiftUI
-import SwiftData
+
+@main
+struct FoundationWritingApp: App {
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+    }
+}

@@ -6,8 +6,8 @@
 //
 import Foundation
 
-public struct PersonalizedLearningRoadmap {
-    public struct LearningModule {
+public struct PersonalizedLearningRoadmap: Codable {
+    public struct LearningModule: Codable {
         public let title: String
         public let objectives: [String]
         public let estimatedTime: TimeInterval
@@ -23,7 +23,7 @@ public struct PersonalizedLearningRoadmap {
         }
     }
     
-    public struct LearningExercise {
+    public struct LearningExercise: Codable {
         public let description: String
         public let instructions: String
         public let expectedOutcome: String
@@ -39,9 +39,9 @@ public struct PersonalizedLearningRoadmap {
     
     public let modules: [LearningModule]
     public let totalDuration: TimeInterval
-    public let personalizedInsights: [String: Any]
+    public let personalizedInsights: [String: String]
     
-    public init(modules: [LearningModule], totalDuration: TimeInterval, personalizedInsights: [String: Any]) {
+    public init(modules: [LearningModule], totalDuration: TimeInterval, personalizedInsights: [String: String]) {
         self.modules = modules
         self.totalDuration = totalDuration
         self.personalizedInsights = personalizedInsights

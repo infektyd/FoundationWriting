@@ -38,6 +38,6 @@ public protocol EnhancedWritingAnalysisService {
     /// - Throws: WritingAnalysisError for various potential failure scenarios
     func exploreContextualReasoning(
         _ suggestion: EnhancedWritingAnalysis.ImprovementSuggestion,
-        context: [String: Any]
+        context: [String: String]
     ) async throws -> ContextualReasoning
 }

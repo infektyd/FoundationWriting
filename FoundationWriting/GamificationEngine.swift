@@ -7,6 +7,7 @@
 import Foundation
 import SwiftUI
 import GameKit
+import Combine
 
 /// Manages gamification features including badges, achievements, and challenges
 @MainActor
@@ -170,7 +171,7 @@ class GamificationEngine: ObservableObject {
     func updateLeaderboard() async {
         guard GKLocalPlayer.local.isAuthenticated else { return }
         
-        let score = GKScore(leaderboardID: "writing_experience_points")
+        let score = GKScore(leaderboardIdentifier: "writing_experience_points")
         score.value = Int64(userProfile.experiencePoints)
         
         do {
@@ -498,7 +499,7 @@ class GamificationEngine: ObservableObject {
                 
                 weeklyRanking = LeaderboardEntry(
                     rank: playerScore.rank,
-                    score: Int(playerScore.value),
+                    score: playerScore.rank,
                     playerName: playerScore.player.displayName
                 )
             }

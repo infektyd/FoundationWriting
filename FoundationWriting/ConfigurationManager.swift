@@ -6,9 +6,9 @@
 //
 import Foundation
 import SwiftUI
+import Combine
 
 /// Manages application configuration and user preferences
-@MainActor
 class ConfigurationManager: ObservableObject {
     @Published var currentConfig: WritingCoachConfiguration
     @Published var presets: [ConfigurationPreset] = []

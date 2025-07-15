@@ -1,11 +1,12 @@
-// AppMain.swift - SwiftUI entry point for Writing Coach app
+// AppMain.swift - Alternative entry point (disabled to avoid conflicts)
 import SwiftUI
 
-@main
+// NOTE: @main is commented out to avoid conflict with FoundationWritingApp.swift
+// @main
 struct WritingCoachApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView() // This should now correctly reference the ContentView you defined or imported
+            ContentView()
         }
     }
 }

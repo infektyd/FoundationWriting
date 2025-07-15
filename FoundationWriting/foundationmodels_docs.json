@@ -1,0 +1,57 @@
+{
+  "generated": "2025-07-15T21:05:24Z",
+  "title": "FoundationModels Framework (Beta) \u2013 Offline Docs",
+  "overview": "Unified reference and guides for Apple's on\u2011device LLM framework.",
+  "sections": [
+    {
+      "type": "guide",
+      "title": "Generating content and performing tasks",
+      "body": "Enhance your app by prompting the on\u2011device LLM. Create a LanguageModelSession and call respond(...)."
+    },
+    {
+      "type": "guide",
+      "title": "Adding intelligent app features",
+      "body": "Integrate prompts with UI, use Instructions vs Prompts, handle latency, etc."
+    },
+    {
+      "type": "guide",
+      "title": "Expanding generation with tool calling",
+      "body": "Define Tool\u2011conforming types, provide them to the session, model decides to invoke."
+    },
+    {
+      "type": "guide",
+      "title": "Improving safety from generative output",
+      "body": "Built\u2011in guardrails, guardrail errors, input/output boundaries, instruction safety."
+    },
+    {
+      "type": "guide",
+      "title": "Generating Swift data structures with guided generation",
+      "body": "Mark Swift types with @Generable, use @Guide on properties to constrain output."
+    },
+    {
+      "type": "api",
+      "title": "SystemLanguageModel",
+      "body": "Singleton .default, or init(useCase:). supportedLanguages, availability."
+    },
+    {
+      "type": "api",
+      "title": "LanguageModelSession",
+      "body": "respond, streamResponse, transcript, error handling."
+    },
+    {
+      "type": "api",
+      "title": "GenerationOptions",
+      "body": "temperature, maxOutputTokens, topP, topK, penalties, stopSequences."
+    },
+    {
+      "type": "api",
+      "title": "Tool protocol",
+      "body": "name, Arguments, callAsFunction, generationSchema."
+    },
+    {
+      "type": "api",
+      "title": "Generable & Guide macros",
+      "body": "Attach @Generable to structs/classes, use @Guide(description:, constraints...)."
+    }
+  ]
+}

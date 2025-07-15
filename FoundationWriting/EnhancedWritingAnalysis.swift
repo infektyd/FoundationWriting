@@ -6,9 +6,9 @@
 //
 import Foundation
 
-public struct EnhancedWritingAnalysis {
-    public struct ImprovementSuggestion: Identifiable {
-        public let id = UUID()
+public struct EnhancedWritingAnalysis: Codable {
+    public struct ImprovementSuggestion: Identifiable, Codable {
+        public let id: UUID
         public let title: String
         public let area: EnhancedWritingAnalysisOptions.ImprovementFocus
         public let description: String
@@ -17,9 +17,10 @@ public struct EnhancedWritingAnalysis {
         public let priority: Double
         public let learningEffort: Double
         public let resources: [ResourceReference]
-        public let contextualInsights: [String: Any]
+        public let contextualInsights: [String: String] // Changed from Any to String for Codable
         
-        public init(title: String, area: EnhancedWritingAnalysisOptions.ImprovementFocus, description: String, beforeExample: String, afterExample: String, priority: Double, learningEffort: Double, resources: [ResourceReference], contextualInsights: [String: Any]) {
+        public init(title: String, area: EnhancedWritingAnalysisOptions.ImprovementFocus, description: String, beforeExample: String, afterExample: String, priority: Double, learningEffort: Double, resources: [ResourceReference], contextualInsights: [String: String] = [:]) {
+            self.id = UUID()
             self.title = title
             self.area = area
             self.description = description
@@ -32,13 +33,13 @@ public struct EnhancedWritingAnalysis {
         }
     }
     
-    public struct ResourceReference {
+    public struct ResourceReference: Codable {
         public let title: String
         public let author: String
         public let type: ResourceType
         public let relevanceScore: Double
         
-        public enum ResourceType {
+        public enum ResourceType: String, Codable {
             case book
             case article
             case video
@@ -54,7 +55,7 @@ public struct EnhancedWritingAnalysis {
         }
     }
     
-    public struct ReadabilityMetrics {
+    public struct ReadabilityMetrics: Codable {
         public let fleschKincaidGrade: Double
         public let fleschKincaidLabel: String
         public let averageSentenceLength: Double

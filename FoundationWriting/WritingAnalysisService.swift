@@ -1,5 +1,3 @@
-@_exported import Foundation
-
 // WritingAnalysisService.swift - Protocol and minimal stub implementations for Writing Coach
 // Created because ContentView.swift depends on these types
 

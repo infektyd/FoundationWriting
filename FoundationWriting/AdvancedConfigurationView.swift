@@ -546,7 +546,6 @@ struct PresetCreationSheet: View {
             }
             .padding()
             .navigationTitle("New Preset")
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {

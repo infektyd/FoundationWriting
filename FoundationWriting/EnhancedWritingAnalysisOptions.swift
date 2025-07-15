@@ -6,7 +6,7 @@
 //
 import Foundation
 
-public struct EnhancedWritingAnalysisOptions {
+public struct EnhancedWritingAnalysisOptions: Codable {
     public enum AnalysisMode: String, CaseIterable, Codable {
         case academic = "Academic Writing"
         case creative = "Creative Writing"

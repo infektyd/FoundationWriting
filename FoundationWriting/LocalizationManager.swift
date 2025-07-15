@@ -6,6 +6,7 @@
 //
 import Foundation
 import SwiftUI
+import Combine
 
 /// Manages multi-language support and localization for the Writing Coach app
 @MainActor
@@ -56,7 +57,7 @@ class LocalizationManager: ObservableObject {
     
     /// Returns localized string with interpolation support
     func localizedString(for key: LocalizationKey, interpolations: [String: String] = [:]) -> String {
-        var result = localizedString(for: key)
+        var result = NSLocalizedString(key.rawValue, comment: "")
         
         for (placeholder, value) in interpolations {
             result = result.replacingOccurrences(of: "{\(placeholder)}", with: value)
@@ -99,7 +100,7 @@ class LocalizationManager: ObservableObject {
     }
     
     /// Formats numbers according to current language locale
-    func formatNumber(_ number: Double, style: NumberFormatterStyle = .decimal) -> String {
+    func formatNumber(_ number: Double, style: NumberFormatter.Style = .decimal) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = style
         formatter.locale = currentLanguage.locale
@@ -144,7 +145,7 @@ class LocalizationManager: ObservableObject {
     }
     
     private func detectSystemLanguage() -> SupportedLanguage {
-        let systemLanguageCode = Locale.current.languageCode ?? "en"
+        let systemLanguageCode = Locale.current.language.languageCode?.identifier ?? "en"
         
         for language in SupportedLanguage.allCases {
             if language.rawValue.hasPrefix(systemLanguageCode) {

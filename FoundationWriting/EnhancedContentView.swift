@@ -5,15 +5,19 @@
 //  Created by Hans Axelsson on 7/15/25.
 //
 import SwiftUI
+#if canImport(AppKit)
+import AppKit
+#endif
 
 /// Enhanced main content view with Phase 1 MVP features
+@MainActor
 struct EnhancedContentView: View {
     @StateObject private var viewModel = EnhancedContentViewModel()
     @State private var showingConfiguration = false
     @State private var selectedTab = 0
     
     var body: some View {
-        HSplitView {
+        HStack(spacing: 0) {
             // Main editing area
             VStack(spacing: 0) {
                 // Toolbar
@@ -109,7 +113,7 @@ struct EnhancedContentView: View {
     private var statusBar: some View {
         HStack {
             // Word count
-            Label("\\(viewModel.wordCount) words", systemImage: "doc.text")
+            Label("\(viewModel.wordCount) words", systemImage: "doc.text")
                 .font(.caption)
                 .foregroundColor(.secondary)
             
@@ -125,14 +129,14 @@ struct EnhancedContentView: View {
                         .foregroundColor(.secondary)
                 }
             } else if let lastAnalyzed = viewModel.lastAnalyzed {
-                Text("Last analyzed: \\(lastAnalyzed, formatter: timeFormatter)")
+                Text("Last analyzed: \(lastAnalyzed, formatter: timeFormatter)")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
             
             // Highlight count
             if !viewModel.highlights.isEmpty {
-                Label("\\(viewModel.highlights.count) suggestions", systemImage: "lightbulb")
+                Label("\(viewModel.highlights.count) suggestions", systemImage: "lightbulb")
                     .font(.caption)
                     .foregroundColor(.blue)
             }
@@ -192,7 +196,7 @@ struct EnhancedContentView: View {
                 }
                 .tag(2)
             }
-            .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
+            .tabViewStyle(.automatic)
         }
         .background(.regularMaterial)
     }
@@ -210,146 +214,6 @@ struct EnhancedContentView: View {
         return formatter
     }
 }
-
-// MARK: - Enhanced Content View Model
-
-@MainActor
-class EnhancedContentViewModel: ObservableObject {
-    @Published var userInput: String = ""
-    @Published var highlights: [TextHighlight] = []
-    @Published var hoveredHighlight: TextHighlight?
-    @Published var currentAnalysis: EnhancedWritingAnalysis?
-    @Published var currentRoadmap: PersonalizedLearningRoadmap?
-    @Published var isAnalyzing = false
-    @Published var isRealTimeEnabled = true {
-        didSet {
-            configManager.currentConfig.realTimeSettings.enabled = isRealTimeEnabled
-            configManager.saveCurrentConfiguration()
-        }
-    }
-    @Published var lastAnalyzed: Date?
-    
-    let analysisService: any EnhancedWritingAnalysisService
-    let realTimeManager: RealTimeAnalysisManager
-    let learningEngine: AdaptiveLearningEngine
-    let configManager: ConfigurationManager
-    
-    var wordCount: Int {
-        userInput.split { $0.isWhitespace }.count
-    }
-    
-    init(analysisService: any EnhancedWritingAnalysisService = MockWritingAnalysisService()) {
-        self.analysisService = analysisService
-        self.configManager = ConfigurationManager()
-        self.realTimeManager = RealTimeAnalysisManager(analysisService: analysisService)
-        self.learningEngine = AdaptiveLearningEngine(analysisService: analysisService)
-        
-        setupObservers()
-    }
-    
-    func onTextChange(_ text: String) {
-        userInput = text
-        
-        if isRealTimeEnabled && !text.isEmpty {
-            realTimeManager.analyzeText(text, with: configManager.currentConfig.analysisOptions)
-        }
-    }
-    
-    func onHighlightHover(_ highlight: TextHighlight?) {
-        hoveredHighlight = highlight
-    }
-    
-    func performManualAnalysis() async {
-        guard !userInput.isEmpty else { return }
-        
-        isAnalyzing = true
-        
-        do {
-            let analysis = try await analysisService.analyzeWriting(
-                userInput,
-                options: configManager.currentConfig.analysisOptions
-            )
-            
-            currentAnalysis = analysis
-            lastAnalyzed = Date()
-            
-            // Generate adaptive roadmap
-            let roadmap = try await learningEngine.generateAdaptiveRoadmap(from: analysis)
-            currentRoadmap = roadmap
-            
-            // Update highlights
-            highlights = generateHighlights(from: analysis)
-            
-        } catch {
-            print("Analysis failed: \\(error.localizedDescription)")
-        }
-        
-        isAnalyzing = false
-    }
-    
-    private func setupObservers() {
-        // Observe real-time manager updates
-        realTimeManager.$currentAnalysis
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] analysis in
-                if let analysis = analysis {
-                    self?.currentAnalysis = analysis
-                    self?.lastAnalyzed = Date()
-                }
-            }
-            .store(in: &cancellables)
-        
-        realTimeManager.$highlightedRanges
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] highlights in
-                self?.highlights = highlights
-            }
-            .store(in: &cancellables)
-        
-        realTimeManager.$isAnalyzing
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] isAnalyzing in
-                self?.isAnalyzing = isAnalyzing
-            }
-            .store(in: &cancellables)
-    }
-    
-    private func generateHighlights(from analysis: EnhancedWritingAnalysis) -> [TextHighlight] {
-        var highlights: [TextHighlight] = []
-        
-        for suggestion in analysis.improvementSuggestions {
-            // Simple implementation - find example text in user input
-            if let range = userInput.range(of: suggestion.beforeExample) {
-                let nsRange = NSRange(range, in: userInput)
-                let highlight = TextHighlight(
-                    range: nsRange,
-                    type: mapImprovementToHighlightType(suggestion.area),
-                    suggestion: suggestion,
-                    priority: suggestion.priority
-                )
-                highlights.append(highlight)
-            }
-        }
-        
-        return highlights.sorted { $0.priority > $1.priority }
-    }
-    
-    private func mapImprovementToHighlightType(_ area: EnhancedWritingAnalysisOptions.ImprovementFocus) -> TextHighlight.HighlightType {
-        switch area {
-        case .grammar: return .grammar
-        case .style: return .style
-        case .clarity: return .clarity
-        case .vocabulary: return .vocabulary
-        case .structure: return .structure
-        case .tone: return .tone
-        case .creativity: return .creativity
-        }
-    }
-    
-    private var cancellables: Set<AnyCancellable> = []
-}
-
-import Combine
 
 // MARK: - Supporting Views
 
@@ -453,7 +317,7 @@ struct SuggestionCardView: View {
                 
                 Spacer()
                 
-                Text("\\(Int(suggestion.priority * 100))%")
+                Text("\(Int(suggestion.priority * 100))%")
                     .font(.caption)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)

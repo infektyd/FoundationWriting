@@ -6,6 +6,7 @@
 //
 import Foundation
 import SwiftUI
+import Combine
 
 /// Manages interactive writing exercises and skill-building activities
 @MainActor
@@ -272,7 +273,9 @@ class InteractiveExerciseEngine: ObservableObject {
                 expectedOutcome: "More engaging and varied writing style",
                 timeEstimate: 1200, // 20 minutes
                 createdDate: Date(),
-                sampleResponse: "At precisely 9 AM, our budget meeting commenced with an animated discussion that quickly revealed divided opinions across the room. While some team members enthusiastically supported the proposed allocations, others voiced strong reservations. After an hour of spirited debate, our boss synthesized the various perspectives and announced the final decision, bringing the session to a decisive close."
+                sampleResponse: """
+                At precisely 9 AM, our budget meeting commenced with an animated discussion that quickly revealed divided opinions across the room. While some team members enthusiastically supported the proposed allocations, others voiced strong reservations. After an hour of spirited debate, our boss synthesized the various perspectives and announced the final decision, bringing the session to a decisive close.
+                """
             )
             
         case .clarity:
@@ -298,8 +301,7 @@ class InteractiveExerciseEngine: ObservableObject {
                 ],
                 expectedOutcome: "Clear, easy-to-understand writing",
                 timeEstimate: 600, // 10 minutes
-                createdDate: Date(),
-                sampleResponse: "The IT department has spent several months evaluating a new software system. They needed to resolve technical and budgetary constraints before proceeding. Once staff training is complete, the implementation will begin next quarter."
+                createdDate: Date()
             )
             
         case .vocabulary:
@@ -329,8 +331,7 @@ class InteractiveExerciseEngine: ObservableObject {
                 ],
                 expectedOutcome: "More sophisticated and precise language",
                 timeEstimate: 900, // 15 minutes
-                createdDate: Date(),
-                sampleResponse: "The multinational corporation conducted a productive meeting regarding their innovative product line. The executives were enthusiastic about the strategies they discussed. The initiatives they explored were crucial for the company's market expansion."
+                createdDate: Date()
             )
             
         case .structure:
@@ -394,9 +395,9 @@ class InteractiveExerciseEngine: ObservableObject {
                 createdDate: Date(),
                 sampleResponse: """
                 1. Team: "Quick update everyone - we've got an accelerated timeline for the project. Let's sync up to prioritize tasks and ensure we hit our new deadline together."
-                
+
                 2. Management: "I'm writing to inform you that we've adjusted our project timeline to meet the advanced deadline. Our team is implementing optimization strategies to ensure timely delivery."
-                
+
                 3. Client: "We're pleased to inform you that we're working to deliver your project ahead of schedule. Our team is committed to maintaining our high standards while meeting your accelerated timeline."
                 """
             )
@@ -429,7 +430,6 @@ class InteractiveExerciseEngine: ObservableObject {
                 expectedOutcome: "An engaging, creative piece of writing",
                 timeEstimate: 1800, // 30 minutes
                 createdDate: Date(),
-                sampleResponse: "The last thing Sarah expected to find in her grandmother's attic was a map. Dust motes danced in the amber light filtering through the small window as she unfolded the yellowed parchment. Strange symbols dotted the familiar streets of her hometown, and a red X marked her own house. 'For my dear Sarah,' read the faded inscription, 'when you're ready to see the magic that's always been there.' As she traced the mysterious route with her finger, the paper began to glow softly, and Sarah realized her grandmother's stories about hidden doorways to other worlds weren't just fairy tales after all."
             )
         }
     }
@@ -581,6 +581,8 @@ class InteractiveExerciseEngine: ObservableObject {
             scores["Completion"] = userResponse.isEmpty ? 0.0 : 1.0
             scores["Effort"] = min(timeSpent / exercise.timeEstimate, 1.0)
             overallScore = scores.values.reduce(0, +) / Double(scores.count)
+        case .challenge:
+            break
         }
         
         // Time efficiency bonus/penalty
@@ -652,6 +654,8 @@ class InteractiveExerciseEngine: ObservableObject {
             
         case .warmUp, .timed:
             tips.append("Regular practice will help improve your writing fluency")
+        case .challenge:
+            break
         }
         
         // Generate overall feedback message

@@ -80,7 +80,7 @@ struct WritingExercise: Identifiable, Codable {
         }
     }
     
-    enum Difficulty: String, Codable, CaseIterable {
+enum Difficulty: String, Codable, CaseIterable, Comparable {
         case easy = "easy"
         case medium = "medium"
         case hard = "hard"
@@ -116,6 +116,11 @@ struct WritingExercise: Identifiable, Codable {
             case .expert: return "star.circle.fill"
             }
         }
+
+        // MARK: - Comparable Conformance
+        static func < (lhs: Difficulty, rhs: Difficulty) -> Bool {
+            lhs.rawValue < rhs.rawValue
+        }
     }
     
     // Computed properties
@@ -136,6 +141,35 @@ struct WritingExercise: Identifiable, Codable {
     
     var isTimeSensitive: Bool {
         return type == .timed || type == .challenge
+    }
+
+    /// Memberwise initializer with default sampleResponse
+    public init(
+        id: UUID,
+        title: String,
+        description: String,
+        type: ExerciseType,
+        targetSkill: SkillArea,
+        difficulty: Difficulty,
+        instructions: String,
+        objectives: [String],
+        expectedOutcome: String,
+        timeEstimate: TimeInterval,
+        createdDate: Date,
+        sampleResponse: String? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.description = description
+        self.type = type
+        self.targetSkill = targetSkill
+        self.difficulty = difficulty
+        self.instructions = instructions
+        self.objectives = objectives
+        self.expectedOutcome = expectedOutcome
+        self.timeEstimate = timeEstimate
+        self.createdDate = createdDate
+        self.sampleResponse = sampleResponse
     }
     
     var complexityScore: Double {
@@ -224,6 +258,7 @@ enum ExerciseRating: String, Codable {
         case .poor: return "xmark.circle.fill"
         }
     }
+
 }
 
 // MARK: - Exercise Performance
@@ -475,7 +510,7 @@ struct ExerciseStatistics: Codable {
 
 // MARK: - Exercise Template
 
-struct ExerciseTemplate: Identifiable, Codable {
+struct ExerciseTemplate: Identifiable {
     let id: UUID
     let name: String
     let category: WritingExercise.ExerciseType
@@ -518,7 +553,6 @@ struct ExerciseTemplate: Identifiable, Codable {
             expectedOutcome: "Improved \(targetSkill.displayName.lowercased()) skills",
             timeEstimate: estimatedTime,
             createdDate: Date(),
-            sampleResponse: nil
         )
     }
     
@@ -579,7 +613,6 @@ struct CustomExercise: Identifiable, Codable {
             expectedOutcome: "Improved writing skills through custom practice",
             timeEstimate: estimatedTime,
             createdDate: createdDate,
-            sampleResponse: nil
         )
     }
 }

@@ -8,7 +8,6 @@ import Foundation
 import Combine
 
 /// Manages real-time writing analysis with intelligent debouncing
-@MainActor
 class RealTimeAnalysisManager: ObservableObject {
     @Published var currentAnalysis: EnhancedWritingAnalysis?
     @Published var isAnalyzing: Bool = false
@@ -38,7 +37,7 @@ class RealTimeAnalysisManager: ObservableObject {
         // Start new debounced analysis
         analysisTask = Task { [weak self] in
             // Wait for debounce interval
-            try? await Task.sleep(for: .seconds(debounceInterval))
+            try? await Task.sleep(nanoseconds: UInt64(debounceInterval * 1_000_000_000))
             
             // Check if task was cancelled during debounce
             guard !Task.isCancelled else { return }
@@ -140,7 +139,7 @@ struct TextHighlight: Identifiable {
     let suggestion: EnhancedWritingAnalysis.ImprovementSuggestion
     let priority: Double
     
-    enum HighlightType: CaseIterable {
+    enum HighlightType: String, CaseIterable {
         case grammar
         case style
         case clarity

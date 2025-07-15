@@ -6,9 +6,9 @@
 //
 import Foundation
 import SwiftUI
+import Combine
 
 /// Intelligent learning roadmap generation with skill progression tracking
-@MainActor
 class AdaptiveLearningEngine: ObservableObject {
     @Published var currentRoadmap: PersonalizedLearningRoadmap?
     @Published var skillProgress: [SkillArea: SkillProgress] = [:]
@@ -19,10 +19,10 @@ class AdaptiveLearningEngine: ObservableObject {
     
     init(
         analysisService: any EnhancedWritingAnalysisService = MockWritingAnalysisService(),
-        userPreferences: UserLearningPreferences = UserLearningPreferences()
+        userPreferences: UserLearningPreferences? = nil
     ) {
         self.analysisService = analysisService
-        self.userPreferences = userPreferences
+        self.userPreferences = userPreferences ?? UserLearningPreferences()
         initializeSkillProgress()
     }
     
@@ -169,16 +169,15 @@ class AdaptiveLearningEngine: ObservableObject {
     private func generatePersonalizedInsights(
         from analysis: EnhancedWritingAnalysis,
         skillGaps: [SkillGap]
-    ) -> [String: Any] {
-        
-        var insights: [String: Any] = [:]
+    ) -> [String: String] {
+        var insights: [String: String] = [:]
         
         // Overall assessment
-        insights["overallLevel"] = calculateOverallLevel()
-        insights["improvementVelocity"] = calculateImprovementVelocity()
-        insights["focusAreas"] = skillGaps.prefix(3).map { $0.skillArea.rawValue }
-        insights["estimatedTimeToImprovement"] = estimateTimeToImprovement(skillGaps)
-        insights["strengths"] = identifyStrengths()
+        insights["overallLevel"] = String(describing: calculateOverallLevel())
+        insights["improvementVelocity"] = String(describing: calculateImprovementVelocity())
+        insights["focusAreas"] = skillGaps.prefix(3).map { $0.skillArea.rawValue }.joined(separator: ", ")
+        insights["estimatedTimeToImprovement"] = String(describing: estimateTimeToImprovement(skillGaps))
+        insights["strengths"] = identifyStrengths().joined(separator: ", ")
         insights["weeklyGoal"] = generateWeeklyGoal(from: skillGaps)
         
         return insights
@@ -322,7 +321,7 @@ class AdaptiveLearningEngine: ObservableObject {
 
 // MARK: - Supporting Data Models
 
-enum SkillArea: String, CaseIterable {
+enum SkillArea: String, CaseIterable, Codable {
     case grammar, style, clarity, vocabulary, structure, tone, creativity
     
     var displayName: String {
@@ -363,12 +362,21 @@ struct SkillGap {
 }
 
 struct LearningSession: Codable, Identifiable {
-    let id = UUID()
+    let id: UUID
     let skillArea: SkillArea
     let performanceScore: Double // 0.0 to 1.0
     let timeSpent: TimeInterval
     let completedAt: Date
     let exerciseType: String
+    
+    init(skillArea: SkillArea, performanceScore: Double, timeSpent: TimeInterval, completedAt: Date, exerciseType: String) {
+        self.id = UUID()
+        self.skillArea = skillArea
+        self.performanceScore = performanceScore
+        self.timeSpent = timeSpent
+        self.completedAt = completedAt
+        self.exerciseType = exerciseType
+    }
 }
 
 struct UserLearningPreferences: Codable {

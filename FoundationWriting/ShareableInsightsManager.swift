@@ -7,6 +7,7 @@
 import Foundation
 import AppKit
 import SwiftUI
+import Combine
 
 /// Manages creation and sharing of writing insights and achievements
 @MainActor
@@ -112,7 +113,7 @@ class ShareableInsightsManager: ObservableObject {
                 title: "Writing Progress Milestone! 🎯",
                 description: "I've reached \(Int(overallProgress * 100))% overall progress in my writing skills!",
                 metrics: ["Overall Progress": "\(Int(overallProgress * 100))%"],
-                shareText: "🎯 Just reached \(Int(overallProgress * 100))% overall progress in my writing journey! Continuously improving with @WritingCoachApp #WritingGoals #PersonalGrowth",
+                shareText: "🎯 Just reached \(Int(overallProgress * 100))% overall progress in my writing journey! Continuously improving my writing skills.",
                 visualData: ProgressVisualData(
                     percentage: overallProgress,
                     skillBreakdown: progress.mapValues { $0.progressPercentage }
@@ -132,7 +133,7 @@ class ShareableInsightsManager: ObservableObject {
                         "Skill Level": "\(Int(skillProgress.progressPercentage * 100))%",
                         "Sessions Completed": "\(skillProgress.sessionsCompleted)"
                     ],
-                    shareText: "🏆 Just mastered \(skill.displayName.lowercased())! Reached \(Int(skillProgress.progressPercentage * 100))% proficiency after \(skillProgress.sessionsCompleted) practice sessions. #WritingSkills #Achievement",
+                    shareText: "🏆 Just mastered \(skill.displayName.lowercased())! Reached \(Int(skillProgress.progressPercentage * 100))% proficiency after \(skillProgress.sessionsCompleted) practice sessions.",
                     visualData: SkillMasteryVisualData(
                         skillArea: skill,
                         level: skillProgress.progressPercentage,
@@ -161,7 +162,7 @@ class ShareableInsightsManager: ObservableObject {
                     "Grade Level": String(format: "%.1f", grade),
                     "Sentence Length": "\(String(format: "%.1f", analysis.metrics.averageSentenceLength)) words"
                 ],
-                shareText: "📚 My writing just hit the perfect readability level! \(analysis.metrics.fleschKincaidLabel) reading level means my ideas are clear and accessible. #WritingTips #ClearCommunication",
+                shareText: "📚 My writing just hit the perfect readability level! \(analysis.metrics.fleschKincaidLabel) reading level means my ideas are clear and accessible.",
                 visualData: ReadabilityVisualData(
                     grade: grade,
                     label: analysis.metrics.fleschKincaidLabel,
@@ -182,7 +183,7 @@ class ShareableInsightsManager: ObservableObject {
                     "Vocabulary Diversity": "\(Int(analysis.metrics.vocabularyDiversity * 100))%",
                     "Average Word Length": "\(String(format: "%.1f", analysis.metrics.averageWordLength)) chars"
                 ],
-                shareText: "🌟 My writing vocabulary diversity just hit \(Int(analysis.metrics.vocabularyDiversity * 100))%! Keeping my language fresh and engaging. #VocabularyGoals #WritingSkills",
+                shareText: "🌟 My writing vocabulary diversity just hit \(Int(analysis.metrics.vocabularyDiversity * 100))%! Keeping my language fresh and engaging.",
                 visualData: VocabularyVisualData(
                     diversity: analysis.metrics.vocabularyDiversity,
                     averageWordLength: analysis.metrics.averageWordLength
@@ -210,7 +211,7 @@ class ShareableInsightsManager: ObservableObject {
                     "Focus Areas": "\(areas.count)",
                     "High Priority Items": "\(highPrioritySuggestions.count)"
                 ],
-                shareText: "🚀 Excited about my writing growth plan! Focusing on \(areas.count) key areas with \(highPrioritySuggestions.count) targeted improvements. #WritingGrowth #SkillDevelopment",
+                shareText: "🚀 Excited about my writing growth plan! Focusing on \(areas.count) key areas with \(highPrioritySuggestions.count) targeted improvements.",
                 visualData: MultiSkillVisualData(
                     focusAreas: Array(areas),
                     suggestionCount: highPrioritySuggestions.count
@@ -230,7 +231,7 @@ class ShareableInsightsManager: ObservableObject {
                     "Total Sessions": "\(totalSessions)",
                     "Active Skills": "\(progress.count)"
                 ],
-                shareText: "💪 Consistency pays off! Just completed my \(totalSessions)th writing practice session. Building strong writing habits one session at a time! #WritingHabits #Consistency",
+                shareText: "💪 Consistency pays off! Just completed my \(totalSessions)th writing practice session. Building strong writing habits one session at a time!",
                 visualData: ConsistencyVisualData(
                     totalSessions: totalSessions,
                     skillCount: progress.count
@@ -258,7 +259,7 @@ class ShareableInsightsManager: ObservableObject {
                     "Character Count": "\(textLength)",
                     "Improvement Areas": "\(analysis.improvementSuggestions.count)"
                 ],
-                shareText: "✍️ Just analyzed a ~\(wordCount) word piece! Committed to improving my long-form writing with detailed feedback. #LongFormWriting #WritingAnalysis",
+                shareText: "✍️ Just analyzed a ~\(wordCount) word piece! Committed to improving my long-form writing with detailed feedback.",
                 visualData: QualityVisualData(
                     wordCount: wordCount,
                     characterCount: textLength,
@@ -288,7 +289,7 @@ class ShareableInsightsManager: ObservableObject {
                     "Skills Practiced": "\(recentlyPracticed.count)",
                     "This Week": "Active"
                 ],
-                shareText: "📈 Staying sharp! Practiced \(recentlyPracticed.count) different writing skills this week. Continuous improvement is the key! #WritingPractice #ActiveLearning",
+                shareText: "📈 Staying sharp! Practiced \(recentlyPracticed.count) different writing skills this week. Continuous improvement is the key!"
                 visualData: GrowthVisualData(
                     recentSkillsPracticed: recentlyPracticed.count,
                     timeframe: "This Week"
@@ -433,17 +434,15 @@ class ShareableInsightsManager: ObservableObject {
         
         try? pngData.write(to: tempURL)
         
-        // Share via system share sheet
-        let sharingService = NSSharingService(named: .postOnTwitter) ?? 
-                           NSSharingService(named: .postOnFacebook) ??
-                           NSSharingService(named: .sendViaAirDrop)
+        // Share via system share sheet (removed social media options)
+        let sharingService = NSSharingService(named: .sendViaAirDrop) ??
+                           NSSharingService(named: .copyToPasteboard)
         
         sharingService?.perform(withItems: [text, tempURL])
     }
     
     private func shareText(_ text: String) async {
-        let sharingService = NSSharingService(named: .postOnTwitter) ?? 
-                           NSSharingService(named: .copyToPasteboard)
+        let sharingService = NSSharingService(named: .copyToPasteboard)
         
         sharingService?.perform(withItems: [text])
     }

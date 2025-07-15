@@ -6,13 +6,13 @@
 //
 import Foundation
 
-public struct ContextualReasoning {
+public struct ContextualReasoning: Codable {
     public let linguisticPrinciples: [String]
     public let cognitiveInsights: [String]
     public let practicalApplications: [String]
-    public let additionalContext: [String: Any]
+    public let additionalContext: [String: String]
     
-    public init(linguisticPrinciples: [String], cognitiveInsights: [String], practicalApplications: [String], additionalContext: [String: Any]) {
+    public init(linguisticPrinciples: [String], cognitiveInsights: [String], practicalApplications: [String], additionalContext: [String: String]) {
         self.linguisticPrinciples = linguisticPrinciples
         self.cognitiveInsights = cognitiveInsights
         self.practicalApplications = practicalApplications
